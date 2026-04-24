@@ -4,20 +4,45 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, MessageSquare, Calendar, Users,
   Settings, LogOut, Zap, BarChart2, Bell,
+  UserCog, Scissors, Megaphone, GitBranch,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth'
 import { Avatar } from '@/components/ui/Avatar'
 
-const navItems = [
-  { href: '/dashboard',      label: 'Dashboard',   icon: LayoutDashboard },
-  { href: '/inbox',          label: 'Inbox',        icon: MessageSquare },
-  { href: '/agenda',         label: 'Agenda',       icon: Calendar },
-  { href: '/crm',            label: 'CRM',          icon: Users },
-  { href: '/analytics',     label: 'Analytics',   icon: BarChart2 },
-  { href: '/automations',    label: 'Automações',   icon: Zap },
-  { href: '/notifications',  label: 'Notificações', icon: Bell },
-  { href: '/settings',       label: 'Configurações',icon: Settings },
+const navGroups = [
+  {
+    label: 'Principal',
+    items: [
+      { href: '/dashboard',     label: 'Dashboard',    icon: LayoutDashboard },
+      { href: '/inbox',         label: 'Inbox',         icon: MessageSquare },
+      { href: '/agenda',        label: 'Agenda',        icon: Calendar },
+      { href: '/crm',           label: 'CRM',           icon: Users },
+    ],
+  },
+  {
+    label: 'Operação',
+    items: [
+      { href: '/professionals', label: 'Profissionais', icon: UserCog },
+      { href: '/services',      label: 'Serviços',      icon: Scissors },
+    ],
+  },
+  {
+    label: 'Marketing',
+    items: [
+      { href: '/broadcasts',    label: 'Broadcasts',    icon: Megaphone },
+      { href: '/flows',         label: 'Flows',         icon: GitBranch },
+      { href: '/automations',   label: 'Automações',    icon: Zap },
+    ],
+  },
+  {
+    label: 'Dados',
+    items: [
+      { href: '/analytics',     label: 'Analytics',    icon: BarChart2 },
+      { href: '/notifications', label: 'Notificações', icon: Bell },
+      { href: '/settings',      label: 'Configurações',icon: Settings },
+    ],
+  },
 ]
 
 export function Sidebar() {
@@ -37,25 +62,34 @@ export function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {navItems.map(({ href, label, icon: Icon }) => {
-          const active = pathname.startsWith(href)
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                active
-                  ? 'bg-primary-600 text-white'
-                  : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-              )}
-            >
-              <Icon size={17} />
-              {label}
-            </Link>
-          )
-        })}
+      <nav className="flex-1 px-3 py-3 space-y-4 overflow-y-auto scrollbar-thin">
+        {navGroups.map(group => (
+          <div key={group.label}>
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-500">
+              {group.label}
+            </p>
+            <div className="space-y-0.5">
+              {group.items.map(({ href, label, icon: Icon }) => {
+                const active = pathname.startsWith(href)
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                      active
+                        ? 'bg-primary-600 text-white'
+                        : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                    )}
+                  >
+                    <Icon size={16} />
+                    {label}
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       {/* User */}
