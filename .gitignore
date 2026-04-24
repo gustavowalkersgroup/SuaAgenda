@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.local
+*.local
+*.log
+.DS_Store
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+nginx/ssl/
