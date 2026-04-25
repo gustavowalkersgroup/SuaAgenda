@@ -74,7 +74,7 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://3.135.60.244}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://3.135.60.244/api}
     container_name: saas_web
     restart: unless-stopped
     ports:

@@ -31,8 +31,8 @@ export default function LoginPage() {
           id: data.user.id,
           name: data.user.name,
           email: data.user.email,
-          role: data.user.role,
-          workspaceId: data.user.workspaceId,
+          role: data.role,
+          workspaceId: data.workspaceId,
         },
         data.token
       )
