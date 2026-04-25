@@ -15,13 +15,13 @@ const nodeSchema: z.ZodType<Record<string, unknown>> = z.object({
   type: z.enum(['message', 'input', 'condition', 'action', 'ai', 'delay', 'typing', 'follow_up']),
   data: z.record(z.unknown()),
   // Aceita tanto o formato do frontend (nextNodeId/conditionTrue/conditionFalse)
-  // quanto o formato do DB (next/nextTrue/nextFalse)
-  next:           z.string().optional(),
-  nextTrue:       z.string().optional(),
-  nextFalse:      z.string().optional(),
-  nextNodeId:     z.string().optional(),
-  conditionTrue:  z.string().optional(),
-  conditionFalse: z.string().optional(),
+  // quanto o formato do DB (next/nextTrue/nextFalse); null = fim do fluxo
+  next:           z.string().nullish(),
+  nextTrue:       z.string().nullish(),
+  nextFalse:      z.string().nullish(),
+  nextNodeId:     z.string().nullish(),
+  conditionTrue:  z.string().nullish(),
+  conditionFalse: z.string().nullish(),
 })
 
 const flowSchema = z.object({
