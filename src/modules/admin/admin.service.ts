@@ -82,3 +82,120 @@ export async function promoteToSuperAdmin(email: string) {
   if (!result.rowCount) throw new NotFoundError('Usuário')
   return result.rows[0]
 }
+
+export async function updateWorkspaceAdmin(
+  workspaceId: string,
+  dto: Partial<{
+    plan: string
+    is_active: boolean
+    trial_ends_at: string | null
+    max_contacts: number
+    max_users: number
+    billing_email: string
+    notes: string
+  }>
+) {
+  const fields: string[] = []
+  const values: unknown[] = []
+  let i = 1
+
+  if (dto.plan !== undefined)          { fields.push(`plan = $${i++}`);          values.push(dto.plan) }
+  if (dto.is_active !== undefined)     { fields.push(`is_active = $${i++}`);     values.push(dto.is_active) }
+  if (dto.trial_ends_at !== undefined) { fields.push(`trial_ends_at = $${i++}`); values.push(dto.trial_ends_at) }
+  if (dto.max_contacts !== undefined)  { fields.push(`max_contacts = $${i++}`);  values.push(dto.max_contacts) }
+  if (dto.max_users !== undefined)     { fields.push(`max_users = $${i++}`);     values.push(dto.max_users) }
+  if (dto.billing_email !== undefined) { fields.push(`billing_email = $${i++}`); values.push(dto.billing_email) }
+  if (dto.notes !== undefined)         { fields.push(`notes = $${i++}`);         values.push(dto.notes) }
+
+  if (!fields.length) return getWorkspaceAdminDetail(workspaceId)
+
+  values.push(workspaceId)
+  await query(
+    `UPDATE workspaces SET ${fields.join(', ')}, updated_at = NOW() WHERE id = $${i}`,
+    values
+  )
+  return getWorkspaceAdminDetail(workspaceId)
+}
+
+export async function getWorkspaceAdminDetail(workspaceId: string) {
+  const result = await query<{
+    id: string; name: string; slug: string; plan: string
+    is_active: boolean; created_at: string; trial_ends_at: string | null
+    max_contacts: number; max_users: number
+    billing_email: string | null; notes: string | null
+    timezone: string
+  }>(
+    `SELECT id, name, slug, plan, is_active, created_at,
+            trial_ends_at, max_contacts, max_users,
+            billing_email, notes, timezone
+     FROM workspaces WHERE id = $1`,
+    [workspaceId]
+  )
+  if (!result.rowCount) throw new NotFoundError('Workspace')
+  return result.rows[0]
+}
+
+export async function deleteWorkspace(workspaceId: string) {
+  // Soft-delete: marca como inativo e registra data
+  const result = await query(
+    `UPDATE workspaces SET is_active = false, updated_at = NOW()
+     WHERE id = $1 RETURNING id`,
+    [workspaceId]
+  )
+  if (!result.rowCount) throw new NotFoundError('Workspace')
+}
+
+export async function exportWorkspaceConfig(workspaceId: string) {
+  const [ws, members, services, profs] = await Promise.all([
+    query(
+      `SELECT id, name, slug, plan, timezone, max_contacts, max_users, parallel_scheduling,
+              scheduling_window_days, slot_lock_minutes, created_at
+       FROM workspaces WHERE id = $1`,
+      [workspaceId]
+    ),
+    query(
+      `SELECT u.email, wu.role FROM workspace_users wu
+       JOIN users u ON u.id = wu.user_id
+       WHERE wu.workspace_id = $1 AND wu.is_active = true`,
+      [workspaceId]
+    ),
+    query(
+      `SELECT name, description, duration_minutes, price, is_active FROM services WHERE workspace_id = $1`,
+      [workspaceId]
+    ),
+    query(
+      `SELECT name, specialty, email, phone FROM professionals WHERE workspace_id = $1 AND is_active = true`,
+      [workspaceId]
+    ),
+  ])
+
+  return {
+    exported_at: new Date().toISOString(),
+    workspace: ws.rows[0] ?? null,
+    members: members.rows,
+    services: services.rows,
+    professionals: profs.rows,
+  }
+}
+
+export async function getWorkspaceMembers(workspaceId: string) {
+  const result = await query<{
+    user_id: string; name: string; email: string; role: string; joined_at: string
+  }>(
+    `SELECT wu.user_id, u.name, u.email, wu.role, wu.created_at AS joined_at
+     FROM workspace_users wu
+     JOIN users u ON u.id = wu.user_id
+     WHERE wu.workspace_id = $1 AND wu.is_active = true
+     ORDER BY wu.created_at`,
+    [workspaceId]
+  )
+  return result.rows
+}
+
+export async function removeMemberAdmin(workspaceId: string, userId: string) {
+  await query(
+    `UPDATE workspace_users SET is_active = false
+     WHERE workspace_id = $1 AND user_id = $2`,
+    [workspaceId, userId]
+  )
+}
