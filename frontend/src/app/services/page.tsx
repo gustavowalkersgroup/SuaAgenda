@@ -13,7 +13,7 @@ import { useProfessionals } from '@/hooks/useProfessionals'
 import { formatCurrency, cn } from '@/lib/utils'
 import {
   Plus, Search, Pencil, Trash2, Clock, DollarSign,
-  Scissors, Users, ToggleLeft, ToggleRight, ChevronRight,
+  Scissors, Users, ToggleLeft, ToggleRight,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -21,9 +21,8 @@ type Service = {
   id: string
   name: string
   description?: string
-  duration: number
+  durationMinutes: number
   price: number
-  category?: string
   isActive: boolean
   professionals?: { id: string; name: string }[]
 }
@@ -43,9 +42,8 @@ function ServiceForm({
   const [form, setForm] = useState({
     name: initial?.name ?? '',
     description: initial?.description ?? '',
-    duration: initial?.duration ?? 30,
+    duration: initial?.durationMinutes ?? 30,
     price: initial?.price ?? 0,
-    category: initial?.category ?? '',
     isActive: initial?.isActive ?? true,
     professionalIds: initial?.professionals?.map(p => p.id) ?? [] as string[],
   })
@@ -65,7 +63,6 @@ function ServiceForm({
     <div className="space-y-4">
       <Input label="Nome do serviço *" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Ex: Corte masculino" />
       <Input label="Descrição" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Descrição breve do serviço" />
-      <Input label="Categoria" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} placeholder="Ex: Cabelo, Barba, Estética..." />
 
       <div className="grid grid-cols-2 gap-3">
         {/* Duration */}
@@ -188,9 +185,6 @@ function ServiceCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-semibold text-gray-900 text-sm">{service.name}</h3>
-            {service.category && (
-              <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs">{service.category}</span>
-            )}
             {!service.isActive && (
               <Badge className="bg-gray-100 text-gray-400">Inativo</Badge>
             )}
@@ -212,7 +206,7 @@ function ServiceCard({
       <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-50">
         <span className="flex items-center gap-1.5 text-sm text-gray-600">
           <Clock size={13} className="text-gray-400" />
-          {service.duration}min
+          {service.durationMinutes}min
         </span>
         <span className="flex items-center gap-1.5 text-sm font-semibold text-primary-700">
           <DollarSign size={13} />
@@ -259,11 +253,11 @@ export default function ServicesPage() {
   const total: number = data?.total ?? 0
   const professionals: ProfessionalOption[] = profsData?.data ?? []
 
-  const categories = [...new Set(services.map(s => s.category).filter(Boolean))]
 
-  async function handleCreate(formData: object) {
+  async function handleCreate(formData: { duration: number; [key: string]: unknown }) {
     try {
-      await createService.mutateAsync(formData)
+      const { duration, ...rest } = formData
+      await createService.mutateAsync({ ...rest, durationMinutes: duration })
       toast.success('Serviço criado!')
       setShowCreate(false)
     } catch {
@@ -271,10 +265,11 @@ export default function ServicesPage() {
     }
   }
 
-  async function handleUpdate(formData: object) {
+  async function handleUpdate(formData: { duration: number; [key: string]: unknown }) {
     if (!editing) return
     try {
-      await updateService.mutateAsync({ id: editing.id, ...formData })
+      const { duration, ...rest } = formData
+      await updateService.mutateAsync({ id: editing.id, ...rest, durationMinutes: duration })
       toast.success('Serviço atualizado!')
       setEditing(null)
     } catch {
@@ -295,7 +290,7 @@ export default function ServicesPage() {
 
   const totalRevenue = services.reduce((sum, s) => sum + s.price, 0)
   const avgDuration = services.length
-    ? Math.round(services.reduce((sum, s) => sum + s.duration, 0) / services.length)
+    ? Math.round(services.reduce((sum, s) => sum + s.durationMinutes, 0) / services.length)
     : 0
 
   return (
@@ -367,63 +362,18 @@ export default function ServicesPage() {
             </Button>
           </div>
         ) : (
-          <>
-            {/* Grouped by category */}
-            {categories.length > 0 ? (
-              categories.map(cat => {
-                const catServices = services.filter(s => s.category === cat)
-                return (
-                  <div key={cat} className="mb-8">
-                    <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">{cat}</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {catServices.map(s => (
-                        <ServiceCard
-                          key={s.id}
-                          service={s}
-                          active={selected?.id === s.id}
-                          onClick={() => setSelected(s)}
-                          onEdit={() => setEditing(s)}
-                          onDelete={() => handleDelete(s.id)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )
-              })
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {services.map(s => (
-                  <ServiceCard
-                    key={s.id}
-                    service={s}
-                    active={selected?.id === s.id}
-                    onClick={() => setSelected(s)}
-                    onEdit={() => setEditing(s)}
-                    onDelete={() => handleDelete(s.id)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Sem categoria */}
-            {categories.length > 0 && services.filter(s => !s.category).length > 0 && (
-              <div className="mb-8">
-                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Sem categoria</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {services.filter(s => !s.category).map(s => (
-                    <ServiceCard
-                      key={s.id}
-                      service={s}
-                      active={selected?.id === s.id}
-                      onClick={() => setSelected(s)}
-                      onEdit={() => setEditing(s)}
-                      onDelete={() => handleDelete(s.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {services.map(s => (
+              <ServiceCard
+                key={s.id}
+                service={s}
+                active={selected?.id === s.id}
+                onClick={() => setSelected(s)}
+                onEdit={() => setEditing(s)}
+                onDelete={() => handleDelete(s.id)}
+              />
+            ))}
+          </div>
         )}
       </div>
 

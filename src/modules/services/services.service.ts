@@ -16,7 +16,11 @@ export async function listServices(workspaceId: string, queryParams: Record<stri
 
   const [rows, count] = await Promise.all([
     query(
-      `SELECT s.id, s.name, s.description, s.duration_minutes, s.price, s.deposit_percent, s.is_active,
+      `SELECT s.id, s.name, s.description,
+              s.duration_minutes AS "durationMinutes",
+              s.price,
+              s.deposit_percent AS "depositPercent",
+              s.is_active AS "isActive",
               COALESCE(json_agg(
                 json_build_object('id', p.id, 'name', p.name)
               ) FILTER (WHERE p.id IS NOT NULL), '[]') as professionals
@@ -37,7 +41,11 @@ export async function listServices(workspaceId: string, queryParams: Record<stri
 
 export async function getService(workspaceId: string, serviceId: string) {
   const result = await query(
-    `SELECT s.id, s.name, s.description, s.duration_minutes, s.price, s.deposit_percent, s.is_active,
+    `SELECT s.id, s.name, s.description,
+            s.duration_minutes AS "durationMinutes",
+            s.price,
+            s.deposit_percent AS "depositPercent",
+            s.is_active AS "isActive",
             COALESCE(json_agg(
               json_build_object('id', p.id, 'name', p.name)
             ) FILTER (WHERE p.id IS NOT NULL), '[]') as professionals
