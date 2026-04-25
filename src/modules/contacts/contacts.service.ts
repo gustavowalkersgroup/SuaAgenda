@@ -20,7 +20,7 @@ interface UpdateContactDTO {
   assigned_to?: string | null
 }
 
-interface ContactFilters {
+interface ContactFilters extends Record<string, unknown> {
   status?: ContactStatus
   assigned_to?: string
   tag?: string

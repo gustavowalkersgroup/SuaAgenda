@@ -92,7 +92,7 @@ async function handleInboundMessage(instanceName: string, data: Record<string, u
 }
 
 async function handleMessageUpdate(data: Record<string, unknown>): Promise<void> {
-  const updates = (data as { key: { id: string }; update: { status?: number } }[])
+  const updates = (data as unknown as { key: { id: string }; update: { status?: number } }[])
   if (!Array.isArray(updates)) return
 
   for (const update of updates) {

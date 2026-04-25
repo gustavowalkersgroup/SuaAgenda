@@ -168,7 +168,7 @@ export async function executeFunction(
         const result = await listServices(ctx.workspaceId, { limit: 50 })
         return {
           success: true,
-          data: result.data.map((s: { id: string; name: string; duration_minutes: number; price: number; is_active: boolean }) => ({
+          data: (result.data as { id: string; name: string; duration_minutes: number; price: number; is_active: boolean }[]).map((s) => ({
             id: s.id,
             nome: s.name,
             duracaoMinutos: s.duration_minutes,

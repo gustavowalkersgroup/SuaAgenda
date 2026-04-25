@@ -5,7 +5,7 @@ import { getPaginationParams, paginate } from '../../shared/pagination'
 type ConversationStatus = 'aberta' | 'em_atendimento' | 'fechada' | 'aguardando'
 type AssigneeType = 'ia' | 'humano'
 
-interface ConversationFilters {
+interface ConversationFilters extends Record<string, unknown> {
   status?: ConversationStatus
   assignee_type?: AssigneeType
   assigned_to?: string
