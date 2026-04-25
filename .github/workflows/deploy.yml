@@ -1,4 +1,4 @@
-name: Deploy
+name: Deploy para Produção
 
 on:
   push:
@@ -7,37 +7,26 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Build API
-        run: |
-          npm ci
-          npm run build
-
-      - name: Build Frontend
-        working-directory: frontend
-        run: |
-          npm ci
-          npm run build
-
-      - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1
+      - name: Deploy no servidor
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
           script: |
+            set -e
             cd /opt/saas-atendimento
+            echo "📦 Puxando código..."
             git pull origin main
-            docker compose -f docker-compose.prod.yml build api web
-            docker compose -f docker-compose.prod.yml run --rm api node dist/db/migrate.js
-            docker compose -f docker-compose.prod.yml up -d api web nginx
-            docker image prune -f
+            echo "🔨 Rebuild da API..."
+            sudo docker compose -f docker-compose.prod.yml up -d --build api
+            echo "🗄️ Rodando migrations..."
+            sudo docker compose -f docker-compose.prod.yml run --rm api node dist/db/migrate.js
+            echo "🎨 Rebuild do frontend..."
+            sudo docker compose -f docker-compose.prod.yml up -d --build web
+            echo "🔄 Reload do nginx..."
+            sudo docker compose -f docker-compose.prod.yml up -d --force-recreate nginx
+            echo "✅ Deploy concluído!"
+            sudo docker compose -f docker-compose.prod.yml ps
