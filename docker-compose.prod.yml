@@ -71,12 +71,12 @@ services:
       - internal
 
   web:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://3.135.60.244}
     container_name: saas_web
     restart: unless-stopped
-    env_file: .env
-    environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://3.135.60.244}
     ports:
       - '3001:3000'
     networks:
