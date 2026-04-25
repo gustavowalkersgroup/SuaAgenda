@@ -192,8 +192,12 @@ export async function connectNumber(workspaceId: string, numberId: string) {
   )
   if (!result.rowCount) throw new NotFoundError('Número')
 
-  const webhookUrl = `${env.APP_URL}/webhooks/whatsapp/${result.rows[0].instance_name}`
-  return evolution.createInstance(result.rows[0].instance_name, webhookUrl)
+  const instanceName = result.rows[0].instance_name
+  // Usa URL interna do Docker para o webhook (mesmo network = sem nginx no meio)
+  // Fallback para APP_URL/api se INTERNAL_APP_URL não estiver definida
+  const baseUrl = env.INTERNAL_APP_URL ?? `${env.APP_URL}/api`
+  const webhookUrl = `${baseUrl}/webhooks/whatsapp/${instanceName}`
+  return evolution.createInstance(instanceName, webhookUrl)
 }
 
 export async function getQrCode(workspaceId: string, numberId: string) {
