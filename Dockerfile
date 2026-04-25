@@ -11,7 +11,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm install --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/src/db/migrations ./src/db/migrations
+COPY --from=builder /app/src/db/migrations ./dist/db/migrations
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
