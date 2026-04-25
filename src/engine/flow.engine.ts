@@ -316,32 +316,92 @@ async function getFlow(workspaceId: string, flowId: string): Promise<Flow | null
   return { id: r.id, workspaceId: r.workspace_id, name: r.name, trigger: r.trigger, nodes: r.nodes, isActive: r.is_active }
 }
 
+// ─── Field-name mapping helpers ────────────────────────────────────────────────
+// Frontend usa: nextNodeId / conditionTrue / conditionFalse
+// DB usa:       next       / nextTrue      / nextFalse
+function toFrontendNode(n: Record<string, unknown>) {
+  return {
+    id: n.id,
+    type: n.type,
+    data: n.data,
+    nextNodeId:     n.next      ?? n.nextNodeId,
+    conditionTrue:  n.nextTrue  ?? n.conditionTrue,
+    conditionFalse: n.nextFalse ?? n.conditionFalse,
+  }
+}
+
+function toDbNode(n: Record<string, unknown>) {
+  return {
+    id:   n.id,
+    type: n.type,
+    data: n.data,
+    next:      n.next      ?? n.nextNodeId,
+    nextTrue:  n.nextTrue  ?? n.conditionTrue,
+    nextFalse: n.nextFalse ?? n.conditionFalse,
+  }
+}
+
 export async function listFlows(workspaceId: string) {
   const result = await query(
-    `SELECT id, name, trigger, is_active, created_at FROM flows WHERE workspace_id = $1 ORDER BY name`,
+    `SELECT id, name,
+            trigger      AS "triggerType",
+            is_active    AS "isActive",
+            nodes,
+            created_at   AS "createdAt"
+     FROM flows WHERE workspace_id = $1 ORDER BY name`,
     [workspaceId]
   )
-  return result.rows
+  return result.rows.map(r => ({
+    ...r,
+    nodes: ((r.nodes ?? []) as Record<string, unknown>[]).map(toFrontendNode),
+  }))
+}
+
+export async function getFlowById(workspaceId: string, flowId: string) {
+  const result = await query(
+    `SELECT id, name,
+            trigger      AS "triggerType",
+            is_active    AS "isActive",
+            nodes,
+            created_at   AS "createdAt",
+            updated_at   AS "updatedAt"
+     FROM flows WHERE id = $1 AND workspace_id = $2`,
+    [flowId, workspaceId]
+  )
+  if (!result.rowCount) return null
+  const r = result.rows[0]
+  return {
+    ...r,
+    nodes: ((r.nodes ?? []) as Record<string, unknown>[]).map(toFrontendNode),
+  }
 }
 
 export async function upsertFlow(workspaceId: string, dto: {
-  id?: string; name: string; trigger: string; nodes: FlowNode[]; isActive?: boolean
+  id?: string
+  name: string
+  trigger?: string
+  triggerType?: string
+  nodes: Record<string, unknown>[]
+  isActive?: boolean
 }) {
+  const trigger = dto.trigger ?? dto.triggerType
+  const nodes = dto.nodes.map(toDbNode)
+
   if (dto.id) {
     await query(
-      `UPDATE flows SET name=$1, trigger=$2, nodes=$3, is_active=COALESCE($4,is_active)
+      `UPDATE flows SET name=$1, trigger=$2, nodes=$3, is_active=COALESCE($4,is_active), updated_at=NOW()
        WHERE id=$5 AND workspace_id=$6`,
-      [dto.name, dto.trigger, JSON.stringify(dto.nodes), dto.isActive ?? null, dto.id, workspaceId]
+      [dto.name, trigger, JSON.stringify(nodes), dto.isActive ?? null, dto.id, workspaceId]
     )
-    return { id: dto.id }
+    return getFlowById(workspaceId, dto.id)
   }
 
   const result = await query<{ id: string }>(
     `INSERT INTO flows (workspace_id, name, trigger, nodes, is_active)
      VALUES ($1,$2,$3,$4,COALESCE($5,false)) RETURNING id`,
-    [workspaceId, dto.name, dto.trigger, JSON.stringify(dto.nodes), dto.isActive ?? false]
+    [workspaceId, dto.name, trigger, JSON.stringify(nodes), dto.isActive ?? false]
   )
-  return result.rows[0]
+  return getFlowById(workspaceId, result.rows[0].id)
 }
 
 export async function deleteFlow(workspaceId: string, flowId: string) {

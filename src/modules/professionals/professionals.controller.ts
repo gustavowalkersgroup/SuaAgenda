@@ -59,6 +59,23 @@ export async function remove(req: AuthRequest, res: Response, next: NextFunction
   } catch (err) { next(err) }
 }
 
+export async function getSchedules(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await service.getSchedules(req.auth.workspaceId, req.params.id)
+    res.json(result)
+  } catch (err) { next(err) }
+}
+
+export async function updateSchedules(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { schedules } = z.object({
+      schedules: z.array(dayScheduleSchema.extend({ isActive: z.boolean().optional() })),
+    }).parse(req.body)
+    const result = await service.updateSchedules(req.auth.workspaceId, req.params.id, schedules)
+    res.json(result)
+  } catch (err) { next(err) }
+}
+
 export async function createBlock(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const dto = blockSchema.parse(req.body)

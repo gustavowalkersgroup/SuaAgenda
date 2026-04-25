@@ -1,8 +1,9 @@
 import { Router, Response, NextFunction } from 'express'
 import { z } from 'zod'
-import { listFlows, upsertFlow, deleteFlow } from '../../engine/flow.engine'
+import { listFlows, getFlowById, upsertFlow, deleteFlow } from '../../engine/flow.engine'
 import { authenticate, requireRole } from '../../middlewares/auth'
 import { AuthRequest } from '../../shared/types'
+import { NotFoundError } from '../../shared/errors'
 
 const router = Router()
 const auth = authenticate as never
@@ -13,17 +14,23 @@ const nodeSchema: z.ZodType<Record<string, unknown>> = z.object({
   id: z.string(),
   type: z.enum(['message', 'input', 'condition', 'action', 'ai', 'delay', 'typing', 'follow_up']),
   data: z.record(z.unknown()),
-  next: z.string().optional(),
-  nextTrue: z.string().optional(),
-  nextFalse: z.string().optional(),
+  // Aceita tanto o formato do frontend (nextNodeId/conditionTrue/conditionFalse)
+  // quanto o formato do DB (next/nextTrue/nextFalse)
+  next:           z.string().optional(),
+  nextTrue:       z.string().optional(),
+  nextFalse:      z.string().optional(),
+  nextNodeId:     z.string().optional(),
+  conditionTrue:  z.string().optional(),
+  conditionFalse: z.string().optional(),
 })
 
 const flowSchema = z.object({
-  id: z.string().uuid().optional(),
-  name: z.string().min(2),
-  trigger: z.string().min(1),
-  nodes: z.array(nodeSchema),
-  isActive: z.boolean().optional(),
+  id:          z.string().uuid().optional(),
+  name:        z.string().min(2),
+  trigger:     z.string().min(1).optional(),
+  triggerType: z.string().min(1).optional(),
+  nodes:       z.array(nodeSchema),
+  isActive:    z.boolean().optional(),
 })
 
 router.get('/', auth, a(async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -31,9 +38,21 @@ router.get('/', auth, a(async (req: AuthRequest, res: Response, next: NextFuncti
   catch (err) { next(err) }
 }))
 
+router.get('/:id', auth, a(async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const flow = await getFlowById(req.auth.workspaceId, req.params.id)
+    if (!flow) throw new NotFoundError('Fluxo')
+    res.json(flow)
+  } catch (err) { next(err) }
+}))
+
 router.post('/', auth, admin, a(async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const dto = flowSchema.parse(req.body)
+    if (!dto.trigger && !dto.triggerType) {
+      res.status(400).json({ error: { message: 'trigger ou triggerType é obrigatório' } })
+      return
+    }
     res.status(201).json(await upsertFlow(req.auth.workspaceId, dto as never))
   } catch (err) { next(err) }
 }))

@@ -65,20 +65,22 @@ export async function createService(workspaceId: string, dto: CreateServiceDTO) 
     throw new AppError('Duração deve ser múltiplo de 30 minutos', 400)
   }
 
-  return withTransaction(async (client) => {
+  // Executa INSERT e sync dentro da transação; SELECT feito DEPOIS do commit
+  let serviceId!: string
+  await withTransaction(async (client) => {
     const result = await client.query<{ id: string }>(
       `INSERT INTO services (workspace_id, name, description, duration_minutes, price, deposit_percent)
        VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
       [workspaceId, dto.name, dto.description || null, dto.durationMinutes, dto.price, dto.depositPercent ?? 0]
     )
-    const serviceId = result.rows[0].id
+    serviceId = result.rows[0].id
 
     if (dto.professionalIds?.length) {
       await syncProfessionals(client, workspaceId, serviceId, dto.professionalIds)
     }
-
-    return getService(workspaceId, serviceId)
   })
+  // Lê após commit para não pegar dados uncommitted
+  return getService(workspaceId, serviceId)
 }
 
 export async function updateService(workspaceId: string, serviceId: string, dto: Partial<CreateServiceDTO> & { isActive?: boolean }) {
@@ -86,7 +88,7 @@ export async function updateService(workspaceId: string, serviceId: string, dto:
     throw new AppError('Duração deve ser múltiplo de 30 minutos', 400)
   }
 
-  return withTransaction(async (client) => {
+  await withTransaction(async (client) => {
     const fields: string[] = []
     const values: unknown[] = []
     let i = 1
@@ -111,9 +113,8 @@ export async function updateService(workspaceId: string, serviceId: string, dto:
     if (dto.professionalIds !== undefined) {
       await syncProfessionals(client, workspaceId, serviceId, dto.professionalIds)
     }
-
-    return getService(workspaceId, serviceId)
   })
+  return getService(workspaceId, serviceId)
 }
 
 async function syncProfessionals(

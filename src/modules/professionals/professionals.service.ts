@@ -74,13 +74,14 @@ export async function getProfessional(workspaceId: string, professionalId: strin
 }
 
 export async function createProfessional(workspaceId: string, dto: CreateProfessionalDTO) {
-  return withTransaction(async (client) => {
+  let professionalId!: string
+  await withTransaction(async (client) => {
     const result = await client.query<{ id: string }>(
       `INSERT INTO professionals (workspace_id, name, user_id, phone)
        VALUES ($1, $2, $3, $4) RETURNING id`,
       [workspaceId, dto.name, dto.userId || null, dto.phone || null]
     )
-    const professionalId = result.rows[0].id
+    professionalId = result.rows[0].id
 
     if (dto.schedule?.length) {
       for (const s of dto.schedule) {
@@ -93,9 +94,8 @@ export async function createProfessional(workspaceId: string, dto: CreateProfess
         )
       }
     }
-
-    return getProfessional(workspaceId, professionalId)
   })
+  return getProfessional(workspaceId, professionalId)
 }
 
 export async function updateProfessional(
@@ -103,7 +103,7 @@ export async function updateProfessional(
   professionalId: string,
   dto: Partial<CreateProfessionalDTO> & { isActive?: boolean }
 ) {
-  return withTransaction(async (client) => {
+  await withTransaction(async (client) => {
     const fields: string[] = []
     const values: unknown[] = []
     let i = 1
@@ -132,9 +132,8 @@ export async function updateProfessional(
         )
       }
     }
-
-    return getProfessional(workspaceId, professionalId)
   })
+  return getProfessional(workspaceId, professionalId)
 }
 
 export async function deleteProfessional(workspaceId: string, professionalId: string) {
@@ -144,6 +143,41 @@ export async function deleteProfessional(workspaceId: string, professionalId: st
     [workspaceId, professionalId]
   )
   if (!result.rowCount) throw new NotFoundError('Profissional')
+}
+
+// Schedules
+export async function getSchedules(workspaceId: string, professionalId: string) {
+  const exists = await query('SELECT id FROM professionals WHERE workspace_id = $1 AND id = $2', [workspaceId, professionalId])
+  if (!exists.rowCount) throw new NotFoundError('Profissional')
+
+  const result = await query(
+    `SELECT day_of_week AS "dayOfWeek", start_time AS "startTime", end_time AS "endTime"
+     FROM professional_schedules WHERE professional_id = $1 ORDER BY day_of_week`,
+    [professionalId]
+  )
+  return result.rows
+}
+
+export async function updateSchedules(
+  workspaceId: string,
+  professionalId: string,
+  schedules: { dayOfWeek: number; startTime: string; endTime: string; isActive?: boolean }[]
+) {
+  const exists = await query('SELECT id FROM professionals WHERE workspace_id = $1 AND id = $2', [workspaceId, professionalId])
+  if (!exists.rowCount) throw new NotFoundError('Profissional')
+
+  await query('DELETE FROM professional_schedules WHERE professional_id = $1', [professionalId])
+  const active = schedules.filter(s => s.isActive !== false)
+  for (const s of active) {
+    await query(
+      `INSERT INTO professional_schedules (professional_id, day_of_week, start_time, end_time)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (professional_id, day_of_week) DO UPDATE
+       SET start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time`,
+      [professionalId, s.dayOfWeek, s.startTime, s.endTime]
+    )
+  }
+  return getSchedules(workspaceId, professionalId)
 }
 
 // Bloqueios de disponibilidade
