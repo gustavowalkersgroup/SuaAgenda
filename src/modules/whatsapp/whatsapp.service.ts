@@ -196,10 +196,12 @@ export async function connectNumber(workspaceId: string, numberId: string) {
   if (!result.rowCount) throw new NotFoundError('Número')
 
   const instanceName = result.rows[0].instance_name
-  // Usa URL interna do Docker para o webhook (mesmo network = sem nginx no meio)
-  // Fallback para APP_URL/api se INTERNAL_APP_URL não estiver definida
+  // URL interna Docker → sem nginx no meio
+  // Rota registrada em: app.use('/webhooks/whatsapp', whatsappRoutes)
+  //                     router.post('/webhook/:instance', ...)
+  // → full path: /webhooks/whatsapp/webhook/:instance
   const baseUrl = env.INTERNAL_APP_URL ?? `${env.APP_URL}/api`
-  const webhookUrl = `${baseUrl}/webhooks/whatsapp/${instanceName}`
+  const webhookUrl = `${baseUrl}/webhooks/whatsapp/webhook/${instanceName}`
   return evolution.createInstance(instanceName, webhookUrl)
 }
 
