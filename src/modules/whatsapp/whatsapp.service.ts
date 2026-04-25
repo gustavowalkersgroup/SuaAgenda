@@ -204,13 +204,48 @@ export async function connectNumber(workspaceId: string, numberId: string) {
   if (!result.rowCount) throw new NotFoundError('Número')
 
   const instanceName = result.rows[0].instance_name
-  // URL interna Docker → sem nginx no meio
-  // Rota registrada em: app.use('/webhooks/whatsapp', whatsappRoutes)
-  //                     router.post('/webhook/:instance', ...)
-  // → full path: /webhooks/whatsapp/webhook/:instance
   const baseUrl = env.INTERNAL_APP_URL ?? `${env.APP_URL}/api`
   const webhookUrl = `${baseUrl}/webhooks/whatsapp/webhook/${instanceName}`
-  return evolution.createInstance(instanceName, webhookUrl)
+
+  let response: unknown
+
+  // Se a instância já existe no Evolution, apenas solicita reconexão — não tenta recriar
+  try {
+    const status = await evolution.getInstanceStatus(instanceName)
+    const state = (status as Record<string, Record<string, string>>)?.instance?.state
+      ?? (status as Record<string, string>)?.state
+
+    if (state === 'open') {
+      logger.info('WhatsApp instance already connected', { instanceName })
+      return status
+    }
+
+    // Instância existe mas não está conectada → solicita QR
+    logger.info('WhatsApp instance exists, requesting QR', { instanceName, state })
+    response = await evolution.getQrCode(instanceName)
+  } catch (existErr: unknown) {
+    const httpStatus = (existErr as { response?: { status?: number } })?.response?.status
+    if (httpStatus !== 404 && httpStatus !== 400) {
+      throw existErr  // Erro inesperado
+    }
+    // Instância não existe no Evolution → cria
+    logger.info('WhatsApp instance not found, creating', { instanceName })
+    response = await evolution.createInstance(instanceName, webhookUrl)
+  }
+
+  // Evolution às vezes retorna o QR diretamente na resposta — salva imediatamente no banco
+  const r = response as Record<string, unknown> | undefined
+  const qrBase64 = r?.base64 as string | undefined
+    ?? (r?.qrcode as Record<string, unknown>)?.base64 as string | undefined
+  if (qrBase64) {
+    await query(
+      `UPDATE whatsapp_numbers SET qr_code = $1 WHERE instance_name = $2`,
+      [qrBase64, instanceName]
+    )
+    logger.info('QR code saved from connect response', { instanceName })
+  }
+
+  return response
 }
 
 export async function getQrCode(workspaceId: string, numberId: string) {
