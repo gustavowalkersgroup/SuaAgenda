@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, MessageSquare, Calendar, Users,
   Settings, LogOut, Zap, BarChart2, Bell,
-  UserCog, Scissors, Megaphone, GitBranch,
+  UserCog, Scissors, Megaphone, GitBranch, Shield, ArrowLeftRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth'
@@ -48,6 +48,8 @@ const navGroups = [
 export function Sidebar() {
   const pathname = usePathname()
   const { user, logout } = useAuthStore()
+  const isSuperAdmin = typeof window !== 'undefined' && !!localStorage.getItem('sa_token')
+  const hasSuperAdminRole = user?.role === 'super_admin'
 
   return (
     <aside className="flex flex-col w-60 min-h-screen bg-gray-900 text-white">
@@ -102,6 +104,41 @@ export function Sidebar() {
               <p className="text-xs text-gray-400 capitalize">{user.role}</p>
             </div>
           </div>
+
+          {/* Link para Painel Admin */}
+          {(hasSuperAdminRole || isSuperAdmin) && (
+            <Link
+              href="/admin"
+              className={cn(
+                'flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-colors mb-1',
+                pathname.startsWith('/admin')
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-indigo-400 hover:bg-gray-800 hover:text-indigo-300'
+              )}
+            >
+              <Shield size={16} />
+              Painel Admin
+            </Link>
+          )}
+
+          {/* Voltar ao admin (quando está dentro de um tenant) */}
+          {isSuperAdmin && !hasSuperAdminRole && (
+            <button
+              onClick={() => {
+                const sa = localStorage.getItem('sa_token')
+                if (sa) {
+                  localStorage.setItem('token', sa)
+                  localStorage.removeItem('sa_token')
+                  window.location.href = '/admin'
+                }
+              }}
+              className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-amber-400 hover:bg-gray-800 hover:text-amber-300 transition-colors mb-1"
+            >
+              <ArrowLeftRight size={16} />
+              Sair do Tenant
+            </button>
+          )}
+
           <button
             onClick={logout}
             className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"

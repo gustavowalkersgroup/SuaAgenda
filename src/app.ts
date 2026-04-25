@@ -23,6 +23,7 @@ import flowsRoutes from './modules/flows/flows.routes'
 import analyticsRoutes from './modules/analytics/analytics.routes'
 import automationsRoutes from './modules/automations/automations.routes'
 import notificationsRoutes from './modules/notifications/notifications.routes'
+import adminRoutes from './modules/admin/admin.routes'
 
 import { startAppointmentWorker } from './queues/appointment.queue'
 import { startAiWorker } from './queues/ai.queue'
@@ -73,6 +74,7 @@ app.use('/flows',         flowsRoutes)
 app.use('/analytics',     analyticsRoutes)
 app.use('/automations',   automationsRoutes)
 app.use('/notifications', notificationsRoutes)
+app.use('/admin',         adminRoutes)
 
 // 404
 app.use((_req, res) => {
