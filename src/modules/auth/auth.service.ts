@@ -62,8 +62,9 @@ export async function login(dto: LoginDTO) {
     email: string
     password: string
     is_active: boolean
+    is_super_admin: boolean
   }>(
-    `SELECT id, name, email, password, is_active FROM users WHERE email = $1`,
+    `SELECT id, name, email, password, is_active, is_super_admin FROM users WHERE email = $1`,
     [dto.email]
   )
 
@@ -107,14 +108,17 @@ export async function login(dto: LoginDTO) {
 
   if (!workspaceId) throw new UnauthorizedError('Nenhum workspace disponível')
 
-  const payload: AuthPayload = { userId: user.id, workspaceId, role }
+  // Super-admins recebem role 'super_admin' no JWT
+  const finalRole: UserRole = user.is_super_admin ? 'super_admin' : role
+
+  const payload: AuthPayload = { userId: user.id, workspaceId, role: finalRole }
   const token = jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] })
 
   return {
     token,
     user: { id: user.id, name: user.name, email: user.email },
     workspaceId,
-    role,
+    role: finalRole,
   }
 }
 
