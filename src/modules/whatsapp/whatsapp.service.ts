@@ -135,13 +135,23 @@ async function handleConnectionUpdate(instanceName: string, data: Record<string,
 }
 
 async function handleQrUpdate(instanceName: string, data: Record<string, unknown>): Promise<void> {
-  const qrCode = (data as { qrcode?: { base64?: string } }).qrcode?.base64
-  if (!qrCode) return
+  // Suporta v1: data.qrcode.base64 e v2: data.base64 ou data.qrcode.base64
+  const d = data as Record<string, unknown>
+  const qrCode =
+    (d?.qrcode as Record<string, unknown>)?.base64 as string |
+    d?.base64 as string |
+    undefined
+
+  if (!qrCode) {
+    logger.debug('QR code update received but no base64 found', { instanceName, keys: Object.keys(d) })
+    return
+  }
 
   await query(
     `UPDATE whatsapp_numbers SET qr_code = $1 WHERE instance_name = $2`,
     [qrCode, instanceName]
   )
+  logger.info('QR code stored', { instanceName })
 }
 
 export async function sendMessage(

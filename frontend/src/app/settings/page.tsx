@@ -122,6 +122,8 @@ function WhatsAppSettings() {
   const [displayName, setDisplayName] = useState('')
   const [instanceName, setInstanceName] = useState('')
   const [purpose, setPurpose] = useState<'atendimento' | 'marketing'>('atendimento')
+  const [connectingId, setConnectingId] = useState<string | null>(null)
+  const [qrPolling, setQrPolling] = useState<string | null>(null) // id do número aguardando QR
 
   const add = useMutation({
     mutationFn: (d: object) => api.post('/whatsapp/numbers', d).then(r => r.data),
@@ -133,11 +135,32 @@ function WhatsAppSettings() {
     onError: () => toast.error('Erro ao adicionar'),
   })
 
-  const connect = useMutation({
-    mutationFn: (id: string) => api.post(`/whatsapp/numbers/${id}/connect`).then(r => r.data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['whatsapp-numbers'] }); toast.success('QR Code gerado') },
-    onError: () => toast.error('Erro ao conectar'),
+  // Polling do QR Code (a cada 4s enquanto aguardando)
+  const { data: qrData } = useQuery({
+    queryKey: ['whatsapp-qr', qrPolling],
+    queryFn: () => api.get(`/whatsapp/numbers/${qrPolling}/qrcode`).then(r => r.data),
+    enabled: !!qrPolling,
+    refetchInterval: 4000,
   })
+
+  // Para o polling se conectou ou recebeu QR
+  const qrCode: string | null = qrData?.qr_code ?? null
+  const isConnected: boolean = qrData?.is_connected ?? false
+  if (isConnected && qrPolling) setQrPolling(null)
+
+  async function handleConnect(id: string) {
+    setConnectingId(id)
+    try {
+      await api.post(`/whatsapp/numbers/${id}/connect`)
+      setQrPolling(id)
+      toast.success('Aguardando QR Code...')
+      qc.invalidateQueries({ queryKey: ['whatsapp-numbers'] })
+    } catch {
+      toast.error('Erro ao iniciar conexão')
+    } finally {
+      setConnectingId(null)
+    }
+  }
 
   type WaNumber = { id: string; instance_name: string; phone_number: string; display_name: string; purpose: string; is_connected: boolean }
   const numbers: WaNumber[] = Array.isArray(data) ? data : []
@@ -148,29 +171,67 @@ function WhatsAppSettings() {
         <CardHeader><CardTitle>Números cadastrados</CardTitle></CardHeader>
         <CardContent>
           {isLoading ? <PageSpinner /> : numbers.length === 0 ? (
-            <p className="text-sm text-gray-400">Nenhum número cadastrado</p>
+            <p className="text-sm text-gray-400">Nenhum número cadastrado ainda</p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {numbers.map(n => (
-                <div key={n.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm text-gray-900">{n.display_name || n.instance_name}</p>
-                    <p className="text-xs text-gray-500">{n.phone_number} · {n.purpose}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge className={n.is_connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}>
-                      {n.is_connected ? (
-                        <span className="flex items-center gap-1"><CheckCircle size={11} /> Conectado</span>
-                      ) : (
-                        <span className="flex items-center gap-1"><XCircle size={11} /> Desconectado</span>
+                <div key={n.id}>
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm text-gray-900">{n.display_name || n.instance_name}</p>
+                      <p className="text-xs text-gray-500">{n.phone_number} · {n.purpose}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge className={n.is_connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}>
+                        {n.is_connected ? (
+                          <span className="flex items-center gap-1"><CheckCircle size={11} /> Conectado</span>
+                        ) : qrPolling === n.id ? (
+                          <span className="flex items-center gap-1"><RefreshCw size={11} className="animate-spin" /> Aguardando QR...</span>
+                        ) : (
+                          <span className="flex items-center gap-1"><XCircle size={11} /> Desconectado</span>
+                        )}
+                      </Badge>
+                      {!n.is_connected && (
+                        <Button
+                          size="sm" variant="secondary"
+                          onClick={() => handleConnect(n.id)}
+                          loading={connectingId === n.id}
+                          disabled={!!qrPolling}
+                        >
+                          <RefreshCw size={13} /> {qrPolling === n.id ? 'Conectando...' : 'Conectar'}
+                        </Button>
                       )}
-                    </Badge>
-                    {!n.is_connected && (
-                      <Button size="sm" variant="secondary" onClick={() => connect.mutate(n.id)} loading={connect.isPending}>
-                        <RefreshCw size={13} /> Conectar
-                      </Button>
-                    )}
+                    </div>
                   </div>
+
+                  {/* QR Code exibido abaixo do número que está conectando */}
+                  {qrPolling === n.id && qrCode && (
+                    <div className="mt-3 p-4 rounded-xl border-2 border-dashed border-green-300 bg-green-50 text-center">
+                      <p className="text-sm font-medium text-green-800 mb-3">
+                        📱 Escaneie com seu WhatsApp
+                      </p>
+                      <img
+                        src={qrCode}
+                        alt="QR Code WhatsApp"
+                        className="mx-auto w-48 h-48 rounded-lg"
+                      />
+                      <p className="text-xs text-green-600 mt-2">
+                        Abra o WhatsApp → Dispositivos vinculados → Vincular dispositivo
+                      </p>
+                      <button
+                        onClick={() => qc.invalidateQueries({ queryKey: ['whatsapp-qr', n.id] })}
+                        className="mt-2 text-xs text-green-700 underline"
+                      >
+                        Atualizar QR Code
+                      </button>
+                    </div>
+                  )}
+                  {qrPolling === n.id && !qrCode && (
+                    <div className="mt-3 p-4 rounded-xl border border-dashed border-amber-200 bg-amber-50 text-center">
+                      <RefreshCw size={20} className="animate-spin text-amber-500 mx-auto mb-2" />
+                      <p className="text-sm text-amber-700">Gerando QR Code... aguarde alguns segundos</p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
