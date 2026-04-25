@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, MessageSquare, Calendar, Users,
   Settings, LogOut, Zap, BarChart2, Bell,
@@ -9,15 +10,16 @@ import {
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth'
 import { Avatar } from '@/components/ui/Avatar'
+import { api } from '@/lib/api'
 
 const navGroups = [
   {
     label: 'Principal',
     items: [
-      { href: '/dashboard',     label: 'Dashboard',    icon: LayoutDashboard },
-      { href: '/inbox',         label: 'Inbox',         icon: MessageSquare },
-      { href: '/agenda',        label: 'Agenda',        icon: Calendar },
-      { href: '/crm',           label: 'CRM',           icon: Users },
+      { href: '/dashboard',     label: 'Dashboard',         icon: LayoutDashboard },
+      { href: '/inbox',         label: 'Caixa de Entrada',  icon: MessageSquare },
+      { href: '/agenda',        label: 'Agenda',            icon: Calendar },
+      { href: '/crm',           label: 'CRM',               icon: Users },
     ],
   },
   {
@@ -30,15 +32,15 @@ const navGroups = [
   {
     label: 'Marketing',
     items: [
-      { href: '/broadcasts',    label: 'Broadcasts',    icon: Megaphone },
-      { href: '/flows',         label: 'Flows',         icon: GitBranch },
-      { href: '/automations',   label: 'Automações',    icon: Zap },
+      { href: '/broadcasts',    label: 'Disparos',   icon: Megaphone },
+      { href: '/flows',         label: 'Fluxos',     icon: GitBranch },
+      { href: '/automations',   label: 'Automações', icon: Zap },
     ],
   },
   {
     label: 'Dados',
     items: [
-      { href: '/analytics',     label: 'Analytics',    icon: BarChart2 },
+      { href: '/analytics',     label: 'Análises',     icon: BarChart2 },
       { href: '/notifications', label: 'Notificações', icon: Bell },
       { href: '/settings',      label: 'Configurações',icon: Settings },
     ],
@@ -51,6 +53,13 @@ export function Sidebar() {
   const isSuperAdmin = typeof window !== 'undefined' && !!localStorage.getItem('sa_token')
   const hasSuperAdminRole = user?.role === 'super_admin'
 
+  const { data: workspace } = useQuery({
+    queryKey: ['workspace'],
+    queryFn: () => api.get('/workspaces/current').then(r => r.data),
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  })
+
   return (
     <aside className="flex flex-col w-60 min-h-screen bg-gray-900 text-white">
       {/* Logo */}
@@ -59,7 +68,9 @@ export function Sidebar() {
           <div className="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center">
             <MessageSquare size={16} className="text-white" />
           </div>
-          <span className="font-semibold text-sm leading-tight">SaaS Atendimento</span>
+          <span className="font-semibold text-sm leading-tight truncate">
+            {workspace?.name ?? 'SuaAgenda'}
+          </span>
         </div>
       </div>
 
