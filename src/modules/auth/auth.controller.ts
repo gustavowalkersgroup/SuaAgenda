@@ -18,8 +18,8 @@ const loginSchema = z.object({
 export async function register(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const dto = registerSchema.parse(req.body)
-    const user = await authService.register(dto)
-    res.status(201).json({ user })
+    const result = await authService.register(dto)
+    res.status(201).json(result)
   } catch (err) {
     next(err)
   }
