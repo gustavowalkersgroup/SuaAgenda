@@ -9,6 +9,7 @@ interface RegisterDTO {
   name: string
   email: string
   password: string
+  workspaceName?: string
 }
 
 interface LoginDTO {
@@ -22,14 +23,36 @@ export async function register(dto: RegisterDTO) {
   if (existing.rowCount) throw new ConflictError('E-mail já cadastrado')
 
   const password = await bcrypt.hash(dto.password, 12)
-  const result = await query<{ id: string; name: string; email: string }>(
+
+  // Cria usuário
+  const userResult = await query<{ id: string; name: string; email: string }>(
     `INSERT INTO users (name, email, password)
      VALUES ($1, $2, $3)
      RETURNING id, name, email`,
     [dto.name, dto.email, password]
   )
+  const user = userResult.rows[0]
 
-  return result.rows[0]
+  // Cria workspace automaticamente
+  const wsName = dto.workspaceName ?? `Workspace de ${dto.name}`
+  const slug = wsName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Date.now()
+  const wsResult = await query<{ id: string }>(
+    `INSERT INTO workspaces (name, slug) VALUES ($1, $2) RETURNING id`,
+    [wsName, slug]
+  )
+  const workspaceId = wsResult.rows[0].id
+
+  // Vincula usuário como admin
+  await query(
+    `INSERT INTO workspace_users (workspace_id, user_id, role) VALUES ($1, $2, 'admin')`,
+    [workspaceId, user.id]
+  )
+
+  // Retorna token direto
+  const payload: AuthPayload = { userId: user.id, workspaceId, role: 'admin' }
+  const token = jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] })
+
+  return { token, user, workspaceId, role: 'admin' }
 }
 
 export async function login(dto: LoginDTO) {
