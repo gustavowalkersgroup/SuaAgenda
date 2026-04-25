@@ -56,8 +56,8 @@ export async function createInstance(instanceName: string, webhookUrl: string) {
     integration: 'WHATSAPP-BAILEYS',
     webhook: {
       url: webhookUrl,
-      byEvents: true,
-      base64: false,
+      byEvents: false,  // v2: false = todos os eventos no mesmo endpoint
+      base64: true,     // QR Code como base64 para exibir no browser
       events: [
         'MESSAGES_UPSERT',
         'MESSAGES_UPDATE',

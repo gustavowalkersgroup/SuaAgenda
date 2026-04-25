@@ -16,7 +16,10 @@ interface EvolutionWebhookPayload {
 export async function handleWebhook(payload: EvolutionWebhookPayload): Promise<void> {
   const { event, instance, data } = payload
 
-  switch (event) {
+  // Evolution v1 usa lowercase+ponto, v2 usa UPPERCASE+underscore
+  const normalised = event?.toLowerCase().replace(/_/g, '.')
+
+  switch (normalised) {
     case 'messages.upsert':
       await handleInboundMessage(instance, data)
       break
@@ -30,7 +33,7 @@ export async function handleWebhook(payload: EvolutionWebhookPayload): Promise<v
       await handleQrUpdate(instance, data)
       break
     default:
-      logger.debug('Unhandled Evolution event', { event })
+      logger.debug('Unhandled Evolution event', { event, normalised })
   }
 }
 
