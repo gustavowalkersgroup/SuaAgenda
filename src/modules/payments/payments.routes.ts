@@ -15,6 +15,7 @@ router.post('/webhook/:provider/:workspaceId', c.webhook)
 router.get('/', auth, a(c.list))
 router.post('/link', auth, a(c.createLink))
 router.get('/policy/:appointmentId', auth, a(c.checkPolicy))
+router.get('/gateway', auth, a(c.getGatewayStatus))
 router.post('/gateway', auth, admin, a(c.configureGateway))
 
 export default router

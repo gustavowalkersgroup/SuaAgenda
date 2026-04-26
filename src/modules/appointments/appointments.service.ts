@@ -1,4 +1,5 @@
-import { addMinutes } from 'date-fns'
+import { addMinutes, format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 import { query, withTransaction } from '../../db/client'
 import { NotFoundError, AppError, ConflictError } from '../../shared/errors'
 import { getPaginationParams, paginate } from '../../shared/pagination'
@@ -7,6 +8,7 @@ import { findAvailableSchedules, revalidateAssignments, SlotAssignment } from '.
 import { AppointmentStatus } from '../../shared/types'
 import { scheduleExpirationJob } from '../../queues/appointment.queue'
 import { logger } from '../../config/logger'
+import { sendMessage } from '../whatsapp/whatsapp.service'
 
 const MAX_SERVICES_PER_APPOINTMENT = 3
 
@@ -256,7 +258,77 @@ export async function confirmAppointment(workspaceId: string, appointmentId: str
     [appointmentId, workspaceId]
   )
 
-  return getAppointment(workspaceId, appointmentId)
+  const confirmed = await getAppointment(workspaceId, appointmentId)
+
+  // Notifica profissional(is) via WhatsApp em background (não bloqueia a resposta)
+  notifyProfessionalsAfterConfirmation(workspaceId, confirmed).catch((err) =>
+    logger.error('Professional notification failed', { error: (err as Error).message })
+  )
+
+  return confirmed
+}
+
+async function notifyProfessionalsAfterConfirmation(
+  workspaceId: string,
+  appt: Record<string, unknown>
+): Promise<void> {
+  // Busca a primeira conversa ativa do workspace para enviar a mensagem
+  const numResult = await query<{ id: string; instance_name: string }>(
+    `SELECT id, instance_name FROM whatsapp_numbers
+     WHERE workspace_id = $1 AND is_connected = true
+     ORDER BY created_at LIMIT 1`,
+    [workspaceId]
+  )
+  if (!numResult.rowCount) return // Nenhum número conectado
+
+  // Busca profissionais únicos do agendamento com telefone cadastrado
+  const services = appt.services as Array<{
+    professionalId: string
+    professionalName: string
+    serviceName: string
+    startsAt: string
+    price: number
+  }>
+
+  const professionalIds = [...new Set(services.map(s => s.professionalId).filter(Boolean))]
+  if (!professionalIds.length) return
+
+  const profResult = await query<{ id: string; phone: string; name: string }>(
+    `SELECT id, phone, name FROM professionals
+     WHERE workspace_id = $1 AND id = ANY($2::uuid[]) AND phone IS NOT NULL AND phone != ''`,
+    [workspaceId, professionalIds]
+  )
+  if (!profResult.rowCount) return
+
+  const startsAt = new Date(appt.starts_at as string)
+  const dateStr = format(startsAt, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+  const serviceNames = [...new Set(services.map(s => s.serviceName))].join(', ')
+  const totalPrice = Number(appt.total_price)
+
+  const numberId = numResult.rows[0].id
+
+  for (const prof of profResult.rows) {
+    // Busca ou cria conversa com o profissional
+    const convResult = await query<{ id: string }>(
+      `SELECT cv.id FROM conversations cv
+       JOIN contacts c ON c.id = cv.contact_id
+       WHERE cv.workspace_id = $1 AND c.phone = $2 AND cv.number_id = $3
+       ORDER BY cv.created_at DESC LIMIT 1`,
+      [workspaceId, prof.phone.replace(/\D/g, ''), numberId]
+    )
+
+    if (!convResult.rowCount) continue // Profissional não tem conversa ativa, pula
+
+    const msg =
+      `📅 *Novo agendamento confirmado!*\n\n` +
+      `👤 Cliente: ${appt.contact_name}\n` +
+      `✂️ Serviço: ${serviceNames}\n` +
+      `🕐 Data/hora: ${dateStr}\n` +
+      `💰 Valor: R$ ${totalPrice.toFixed(2).replace('.', ',')}\n\n` +
+      `Por favor, anote na sua agenda. 😊`
+
+    await sendMessage(workspaceId, convResult.rows[0].id, msg).catch(() => {/* silent */})
+  }
 }
 
 export async function cancelAppointment(

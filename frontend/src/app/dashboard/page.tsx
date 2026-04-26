@@ -44,7 +44,7 @@ function StatCard({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm text-gray-500">{title}</p>
-          <p className="text-2xl font-bold text-gray-900 mt-0.5">{value}</p>
+          <p className="text-xl md:text-2xl font-bold text-gray-900 mt-0.5">{value}</p>
           {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
         </div>
         {trend !== undefined && (
@@ -67,11 +67,11 @@ export default function DashboardPage() {
 
   return (
     <AppLayout>
-      <div className="p-8 max-w-7xl mx-auto">
+      <div className="p-4 md:p-8 max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Dashboard</h1>
             <p className="text-sm text-gray-500 mt-1">Visão geral do seu negócio</p>
           </div>
           <Select

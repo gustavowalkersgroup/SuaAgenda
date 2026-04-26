@@ -18,7 +18,7 @@ import { useServices } from '@/hooks/useServices'
 import { formatDate, formatCurrency, cn } from '@/lib/utils'
 import {
   Plus, Search, Pencil, Trash2, Clock, CalendarOff,
-  ChevronRight, Phone, Mail, Star, ToggleLeft, ToggleRight,
+  ChevronRight, Phone, Mail, Star, ToggleLeft, ToggleRight, ArrowLeft,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -293,6 +293,14 @@ function ProfessionalDetail({
 
   return (
     <div className="space-y-5">
+      {/* Back button — mobile only */}
+      <button
+        onClick={onClose}
+        className="flex items-center gap-2 text-sm text-primary-600 font-medium md:hidden mb-1"
+      >
+        <ArrowLeft size={16} /> Voltar à lista
+      </button>
+
       {/* Header */}
       <div className="flex items-start gap-4">
         <Avatar name={professional.name} size="lg" />
@@ -423,8 +431,11 @@ export default function ProfessionalsPage() {
   return (
     <AppLayout>
       <div className="flex h-screen overflow-hidden">
-        {/* List panel */}
-        <div className={cn('flex flex-col border-r border-gray-200 bg-white transition-all', selected ? 'w-80' : 'flex-1')}>
+        {/* List panel — hidden on mobile when detail is open */}
+        <div className={cn(
+          'flex flex-col border-r border-gray-200 bg-white transition-all',
+          selected ? 'hidden md:flex md:w-80' : 'flex flex-1'
+        )}>
           <div className="p-5 border-b border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -491,10 +502,10 @@ export default function ProfessionalsPage() {
           </div>
         </div>
 
-        {/* Detail panel */}
+        {/* Detail panel — full-width on mobile, flex-1 on desktop */}
         {selected && (
           <div className="flex-1 overflow-y-auto scrollbar-thin bg-gray-50">
-            <div className="max-w-2xl mx-auto p-8">
+            <div className="max-w-2xl mx-auto p-4 md:p-8">
               <ProfessionalDetail
                 professional={selected}
                 onEdit={() => setEditing(selected)}

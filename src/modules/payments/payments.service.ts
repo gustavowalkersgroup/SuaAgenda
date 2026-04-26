@@ -31,6 +31,9 @@ interface GatewayConfig {
   accessToken: string | null
   apiKey: string | null
   webhookSecret: string | null
+  publicKey: string | null
+  clientId: string | null
+  clientSecret: string | null
   isActive: boolean
 }
 
@@ -40,9 +43,13 @@ async function getGatewayConfig(workspaceId: string): Promise<GatewayConfig> {
     access_token: string | null
     api_key: string | null
     webhook_secret: string | null
+    public_key: string | null
+    client_id: string | null
+    client_secret: string | null
     is_active: boolean
   }>(
-    `SELECT provider, access_token, api_key, webhook_secret, is_active
+    `SELECT provider, access_token, api_key, webhook_secret,
+            public_key, client_id, client_secret, is_active
      FROM payment_gateway_configs WHERE workspace_id = $1`,
     [workspaceId]
   )
@@ -59,6 +66,9 @@ async function getGatewayConfig(workspaceId: string): Promise<GatewayConfig> {
     accessToken: decrypt(r.access_token),
     apiKey: decrypt(r.api_key),
     webhookSecret: decrypt(r.webhook_secret),
+    publicKey: decrypt(r.public_key),
+    clientId: decrypt(r.client_id),
+    clientSecret: decrypt(r.client_secret),
     isActive: r.is_active,
   }
 }
@@ -66,19 +76,30 @@ async function getGatewayConfig(workspaceId: string): Promise<GatewayConfig> {
 export async function saveGatewayConfig(
   workspaceId: string,
   provider: GatewayName,
-  credentials: { accessToken?: string; apiKey?: string; webhookSecret?: string }
+  credentials: {
+    accessToken?: string
+    apiKey?: string
+    webhookSecret?: string
+    publicKey?: string
+    clientId?: string
+    clientSecret?: string
+  }
 ) {
   const encrypt = (v: string | undefined) => v ? encryptCredential(v) : null
 
   await query(
     `INSERT INTO payment_gateway_configs
-       (workspace_id, provider, access_token, api_key, webhook_secret, is_active)
-     VALUES ($1,$2,$3,$4,$5,true)
+       (workspace_id, provider, access_token, api_key, webhook_secret,
+        public_key, client_id, client_secret, is_active)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true)
      ON CONFLICT (workspace_id) DO UPDATE
-     SET provider = EXCLUDED.provider,
-         access_token = COALESCE(EXCLUDED.access_token, payment_gateway_configs.access_token),
-         api_key = COALESCE(EXCLUDED.api_key, payment_gateway_configs.api_key),
-         webhook_secret = COALESCE(EXCLUDED.webhook_secret, payment_gateway_configs.webhook_secret),
+     SET provider        = EXCLUDED.provider,
+         access_token    = COALESCE(EXCLUDED.access_token,    payment_gateway_configs.access_token),
+         api_key         = COALESCE(EXCLUDED.api_key,         payment_gateway_configs.api_key),
+         webhook_secret  = COALESCE(EXCLUDED.webhook_secret,  payment_gateway_configs.webhook_secret),
+         public_key      = COALESCE(EXCLUDED.public_key,      payment_gateway_configs.public_key),
+         client_id       = COALESCE(EXCLUDED.client_id,       payment_gateway_configs.client_id),
+         client_secret   = COALESCE(EXCLUDED.client_secret,   payment_gateway_configs.client_secret),
          is_active = true`,
     [
       workspaceId,
@@ -86,8 +107,25 @@ export async function saveGatewayConfig(
       encrypt(credentials.accessToken),
       encrypt(credentials.apiKey),
       encrypt(credentials.webhookSecret),
+      encrypt(credentials.publicKey),
+      encrypt(credentials.clientId),
+      encrypt(credentials.clientSecret),
     ]
   )
+}
+
+// Returns provider + whether config exists (never returns raw credentials)
+export async function getGatewayStatus(workspaceId: string) {
+  const result = await query<{ provider: string; is_active: boolean }>(
+    `SELECT provider, is_active FROM payment_gateway_configs WHERE workspace_id = $1`,
+    [workspaceId]
+  )
+  if (!result.rowCount) return { configured: false, provider: null, isActive: false }
+  return {
+    configured: true,
+    provider: result.rows[0].provider,
+    isActive: result.rows[0].is_active,
+  }
 }
 
 // ==========================================================================

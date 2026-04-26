@@ -29,19 +29,32 @@ export async function checkPolicy(req: AuthRequest, res: Response, next: NextFun
   } catch (err) { next(err) }
 }
 
+export async function getGatewayStatus(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await service.getGatewayStatus(req.auth.workspaceId)
+    res.json(result)
+  } catch (err) { next(err) }
+}
+
 export async function configureGateway(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const dto = z.object({
-      provider: z.enum(['mercadopago', 'asaas']),
-      accessToken: z.string().optional(),
-      apiKey: z.string().optional(),
+      provider:      z.enum(['mercadopago', 'asaas']),
+      accessToken:   z.string().optional(),
+      apiKey:        z.string().optional(),
       webhookSecret: z.string().optional(),
+      publicKey:     z.string().optional(),
+      clientId:      z.string().optional(),
+      clientSecret:  z.string().optional(),
     }).parse(req.body)
 
     await service.saveGatewayConfig(req.auth.workspaceId, dto.provider, {
-      accessToken: dto.accessToken,
-      apiKey: dto.apiKey,
+      accessToken:   dto.accessToken,
+      apiKey:        dto.apiKey,
       webhookSecret: dto.webhookSecret,
+      publicKey:     dto.publicKey,
+      clientId:      dto.clientId,
+      clientSecret:  dto.clientSecret,
     })
     res.json({ ok: true })
   } catch (err) { next(err) }

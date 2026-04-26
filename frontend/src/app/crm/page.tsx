@@ -248,11 +248,11 @@ export default function CRMPage() {
 
   return (
     <AppLayout>
-      <div className="p-8 max-w-7xl mx-auto">
+      <div className="p-4 md:p-8 max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">CRM — Contatos</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">CRM — Contatos</h1>
             <p className="text-sm text-gray-500 mt-1">
               {total} contato{total !== 1 ? 's' : ''} cadastrado{total !== 1 ? 's' : ''}
             </p>

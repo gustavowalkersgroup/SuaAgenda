@@ -25,11 +25,11 @@ export default function AnalyticsPage() {
 
   return (
     <AppLayout>
-      <div className="p-8 max-w-7xl mx-auto">
+      <div className="p-4 md:p-8 max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Analytics</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Analytics</h1>
             <p className="text-sm text-gray-500 mt-1">Relatórios detalhados do seu negócio</p>
           </div>
           <Select

@@ -45,13 +45,13 @@ export default function NotificationsPage() {
 
   return (
     <AppLayout>
-      <div className="p-8 max-w-3xl mx-auto">
+      <div className="p-4 md:p-8 max-w-3xl mx-auto">
         <div className="flex items-center gap-3 mb-8">
           <div className="p-2.5 bg-primary-50 rounded-xl text-primary-600">
             <Bell size={22} />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Notificações</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Notificações</h1>
             <p className="text-sm text-gray-500 mt-0.5">Configure lembretes e confirmações automáticas</p>
           </div>
         </div>

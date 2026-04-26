@@ -419,7 +419,7 @@ function BroadcastDetail({ broadcast }: { broadcast: Broadcast }) {
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-gray-50 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Total de destinatários</p>
-          <p className="text-2xl font-bold text-gray-900">{broadcast.totalRecipients}</p>
+          <p className="text-xl md:text-2xl font-bold text-gray-900">{broadcast.totalRecipients}</p>
         </div>
         <div className="bg-green-50 rounded-xl p-4">
           <p className="text-xs text-gray-400 mb-1">Enviados com sucesso</p>
@@ -528,11 +528,11 @@ export default function BroadcastsPage() {
 
   return (
     <AppLayout>
-      <div className="p-8 max-w-5xl mx-auto">
+      <div className="p-4 md:p-8 max-w-5xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Broadcasts</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Broadcasts</h1>
             <p className="text-sm text-gray-500 mt-0.5">Campanhas de marketing via WhatsApp</p>
           </div>
           <Button onClick={() => setShowCreate(true)}>

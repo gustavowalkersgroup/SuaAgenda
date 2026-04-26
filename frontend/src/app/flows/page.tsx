@@ -649,18 +649,36 @@ export default function FlowsPage() {
 
   const flows: Flow[] = data?.data ?? data ?? []
 
-  async function handleSave(formData: object) {
+  async function handleSave(rawData: Record<string, unknown>) {
     try {
+      // Mapeia campos do frontend para o backend
+      const { triggerType, nodes: rawNodes, ...rest } = rawData as {
+        triggerType: string
+        nodes: FlowNode[]
+        [key: string]: unknown
+      }
+      // Normaliza os campos de next dos nós
+      const nodes = (rawNodes ?? []).map(n => ({
+        id: n.id,
+        type: n.type,
+        data: n.data,
+        next: n.nextNodeId,
+        nextTrue: n.conditionTrue,
+        nextFalse: n.conditionFalse,
+      }))
+      const payload = { ...rest, trigger: triggerType, nodes }
+
       if (editing) {
-        await updateFlow.mutateAsync({ id: editing.id, ...formData })
+        await updateFlow.mutateAsync({ id: editing.id, ...payload })
         toast.success('Fluxo atualizado!')
       } else {
-        await upsertFlow.mutateAsync(formData)
+        await upsertFlow.mutateAsync(payload)
         toast.success('Fluxo criado!')
       }
       setShowEditor(false)
       setEditing(null)
-    } catch {
+    } catch (e) {
+      console.error('Erro ao salvar fluxo:', e)
       toast.error('Erro ao salvar fluxo')
     }
   }
@@ -680,11 +698,11 @@ export default function FlowsPage() {
 
   return (
     <AppLayout>
-      <div className="p-8 max-w-4xl mx-auto">
+      <div className="p-4 md:p-8 max-w-4xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Flow Engine</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Flow Engine</h1>
             <p className="text-sm text-gray-500 mt-0.5">Automatize conversas com fluxos visuais</p>
           </div>
           <Button onClick={openCreate}>

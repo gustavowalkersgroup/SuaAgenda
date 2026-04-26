@@ -30,20 +30,20 @@ export default function SettingsPage() {
 
   return (
     <AppLayout>
-      <div className="p-8 max-w-5xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Configurações</h1>
+      <div className="p-4 md:p-8 max-w-5xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Configurações</h1>
           <p className="text-sm text-gray-500 mt-1">Gerencie o seu workspace e integrações</p>
         </div>
 
-        <div className="flex gap-8">
-          {/* Tab nav */}
-          <nav className="w-44 shrink-0 space-y-1">
+        {/* Mobile: tabs horizontais; Desktop: sidebar vertical */}
+        <div className="flex flex-col md:flex-row gap-4 md:gap-8">
+          <nav className="flex md:flex-col md:w-44 md:shrink-0 gap-1 overflow-x-auto pb-1 md:pb-0">
             {tabs.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 onClick={() => setTab(id)}
-                className={`flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2 shrink-0 md:w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                   tab === id
                     ? 'bg-primary-50 text-primary-700'
                     : 'text-gray-600 hover:bg-gray-100'
@@ -56,7 +56,7 @@ export default function SettingsPage() {
           </nav>
 
           {/* Content */}
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             {tab === 'workspace' && <WorkspaceSettings />}
             {tab === 'whatsapp' && <WhatsAppSettings />}
             {tab === 'ai' && <AISettings />}
@@ -144,7 +144,11 @@ function WhatsAppSettings() {
   })
 
   // Para o polling se conectou ou recebeu QR
-  const qrCode: string | null = qrData?.qr_code ?? null
+  const rawQr: string | null = qrData?.qr_code ?? null
+  // Evolution armazena base64 puro — garantir prefixo data URL correto
+  const qrCode: string | null = rawQr
+    ? (rawQr.startsWith('data:') ? rawQr : `data:image/png;base64,${rawQr}`)
+    : null
   const isConnected: boolean = qrData?.is_connected ?? false
   if (isConnected && qrPolling) setQrPolling(null)
 
@@ -434,40 +438,116 @@ function AISettings() {
 function PaymentSettings() {
   const [provider, setProvider] = useState('mercadopago')
   const [accessToken, setAccessToken] = useState('')
-  const qc = useQueryClient()
+  const [publicKey, setPublicKey] = useState('')
+  const [clientId, setClientId] = useState('')
+  const [clientSecret, setClientSecret] = useState('')
+  const [showTokens, setShowTokens] = useState(false)
+
+  const { data: status } = useQuery({
+    queryKey: ['payment-gateway-status'],
+    queryFn: () => api.get('/payments/gateway').then(r => r.data),
+  })
 
   const save = useMutation({
-    mutationFn: (d: object) => api.post('/payments/gateway/config', d).then(r => r.data),
-    onSuccess: () => { toast.success('Gateway configurado'); setAccessToken('') },
+    mutationFn: (d: object) => api.post('/payments/gateway', d).then(r => r.data),
+    onSuccess: () => {
+      toast.success('Gateway configurado com sucesso!')
+      setAccessToken(''); setPublicKey(''); setClientId(''); setClientSecret('')
+    },
     onError: () => toast.error('Erro ao salvar'),
   })
 
+  // Pré-preenche o provider se já existe config
+  if (status?.provider && provider !== status.provider && !save.isPending) {
+    setProvider(status.provider)
+  }
+
+  const isMercadoPago = provider === 'mercadopago'
+
   return (
     <Card>
-      <CardHeader><CardTitle>Gateway de pagamento</CardTitle></CardHeader>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Gateway de pagamento</CardTitle>
+          {status?.configured && (
+            <Badge className={status.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}>
+              {status.isActive ? '✓ Configurado' : 'Inativo'}
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
       <CardContent className="space-y-4">
-        <Select
-          label="Provedor"
-          value={provider}
-          onChange={e => setProvider(e.target.value)}
-        >
+        <Select label="Provedor" value={provider} onChange={e => setProvider(e.target.value)}>
           <option value="mercadopago">MercadoPago</option>
           <option value="asaas">Asaas</option>
         </Select>
-        <Input
-          label="Access Token / API Key"
-          type="password"
-          value={accessToken}
-          onChange={e => setAccessToken(e.target.value)}
-          placeholder="••••••••••••••••"
-        />
+
+        {/* Access Token — todos os provedores */}
+        <div className="relative">
+          <Input
+            label={isMercadoPago ? 'Access Token (server-side)' : 'API Key / Access Token'}
+            type={showTokens ? 'text' : 'password'}
+            value={accessToken}
+            onChange={e => setAccessToken(e.target.value)}
+            placeholder="••••••••••••••••"
+          />
+        </div>
+
+        {/* Campos exclusivos do Mercado Pago */}
+        {isMercadoPago && (
+          <>
+            <Input
+              label="Public Key (client-side)"
+              type={showTokens ? 'text' : 'password'}
+              value={publicKey}
+              onChange={e => setPublicKey(e.target.value)}
+              placeholder="••••••••••••••••"
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Client ID"
+                type={showTokens ? 'text' : 'password'}
+                value={clientId}
+                onChange={e => setClientId(e.target.value)}
+                placeholder="••••••••••••••••"
+              />
+              <Input
+                label="Client Secret"
+                type={showTokens ? 'text' : 'password'}
+                value={clientSecret}
+                onChange={e => setClientSecret(e.target.value)}
+                placeholder="••••••••••••••••"
+              />
+            </div>
+          </>
+        )}
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowTokens(v => !v)}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700"
+          >
+            {showTokens ? <EyeOff size={13} /> : <Eye size={13} />}
+            {showTokens ? 'Ocultar' : 'Mostrar'} credenciais
+          </button>
+        </div>
+
         <p className="text-xs text-gray-400">
-          A chave é criptografada com AES-256 antes de ser armazenada.
+          Todas as chaves são criptografadas com AES-256 antes de serem armazenadas.
+          Deixe campos em branco para manter os valores já configurados.
         </p>
+
         <Button
-          onClick={() => save.mutate({ provider, accessToken })}
+          onClick={() => save.mutate({
+            provider,
+            accessToken:  accessToken  || undefined,
+            publicKey:    publicKey    || undefined,
+            clientId:     clientId     || undefined,
+            clientSecret: clientSecret || undefined,
+          })}
           loading={save.isPending}
-          disabled={!accessToken}
+          disabled={!accessToken && !publicKey && !clientId && !clientSecret}
         >
           <Save size={15} />
           Salvar configuração

@@ -13,6 +13,19 @@ interface CreateServiceDTO {
 
 export async function listServices(workspaceId: string, queryParams: Record<string, unknown>) {
   const { limit, offset, page } = getPaginationParams(queryParams)
+  const search = queryParams.search as string | undefined
+
+  const conditions: string[] = ['s.workspace_id = $1']
+  const values: unknown[] = [workspaceId]
+  let i = 2
+
+  if (search) {
+    conditions.push(`(s.name ILIKE $${i} OR s.description ILIKE $${i})`)
+    values.push(`%${search}%`)
+    i++
+  }
+
+  const where = conditions.join(' AND ')
 
   const [rows, count] = await Promise.all([
     query(
@@ -27,13 +40,13 @@ export async function listServices(workspaceId: string, queryParams: Record<stri
        FROM services s
        LEFT JOIN service_professionals sp ON sp.service_id = s.id
        LEFT JOIN professionals p ON p.id = sp.professional_id AND p.is_active = true
-       WHERE s.workspace_id = $1
+       WHERE ${where}
        GROUP BY s.id
        ORDER BY s.name
-       LIMIT $2 OFFSET $3`,
-      [workspaceId, limit, offset]
+       LIMIT $${i++} OFFSET $${i++}`,
+      [...values, limit, offset]
     ),
-    query<{ count: string }>('SELECT COUNT(*) FROM services WHERE workspace_id = $1', [workspaceId]),
+    query<{ count: string }>(`SELECT COUNT(*) FROM services s WHERE ${where}`, values),
   ])
 
   return paginate(rows.rows, Number(count.rows[0].count), page, limit)
