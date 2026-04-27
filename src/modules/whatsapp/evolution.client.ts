@@ -49,23 +49,52 @@ export async function sendMedia(params: SendMediaParams) {
   return response.data
 }
 
+const WEBHOOK_EVENTS = [
+  'MESSAGES_UPSERT',
+  'MESSAGES_UPDATE',
+  'CONNECTION_UPDATE',
+  'QRCODE_UPDATED',
+]
+
 export async function createInstance(instanceName: string, webhookUrl: string) {
+  // Evolution v2.2.x: cria a instância sem webhook no payload (formato v1 não pega)
   const response = await http.post('/instance/create', {
     instanceName,
     qrcode: true,
     integration: 'WHATSAPP-BAILEYS',
+  })
+
+  // Configura o webhook em endpoint separado — formato v2.2.x correto
+  try {
+    await setWebhook(instanceName, webhookUrl)
+  } catch (err) {
+    // Se falhar, ainda retorna a instância criada (a configuração do webhook pode ser refeita)
+    // mas loga pra investigar
+    console.error('[evolution.createInstance] setWebhook failed', {
+      instanceName,
+      error: (err as Error).message,
+    })
+  }
+
+  return response.data
+}
+
+export async function setWebhook(instanceName: string, url: string) {
+  // Evolution v2.2+ exige enabled+webhookByEvents+webhookBase64 (não os nomes do v1)
+  const response = await http.post(`/webhook/set/${instanceName}`, {
     webhook: {
-      url: webhookUrl,
-      byEvents: false,  // v2: false = todos os eventos no mesmo endpoint
-      base64: true,     // QR Code como base64 para exibir no browser
-      events: [
-        'MESSAGES_UPSERT',
-        'MESSAGES_UPDATE',
-        'CONNECTION_UPDATE',
-        'QRCODE_UPDATED',
-      ],
+      enabled: true,
+      url,
+      webhookByEvents: false,
+      webhookBase64: true,
+      events: WEBHOOK_EVENTS,
     },
   })
+  return response.data
+}
+
+export async function getWebhook(instanceName: string) {
+  const response = await http.get(`/webhook/find/${instanceName}`)
   return response.data
 }
 

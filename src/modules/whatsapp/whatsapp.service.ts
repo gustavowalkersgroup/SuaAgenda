@@ -257,6 +257,14 @@ export async function connectNumber(workspaceId: string, numberId: string) {
       return status
     }
 
+    // Garante que o webhook está configurado (instâncias antigas podem ter sido criadas sem)
+    try {
+      await evolution.setWebhook(instanceName, webhookUrl)
+      logger.info('Webhook (re)configured for existing instance', { instanceName })
+    } catch (whErr) {
+      logger.warn('setWebhook failed on existing instance', { instanceName, error: (whErr as Error).message })
+    }
+
     logger.info('WhatsApp instance exists, requesting QR', { instanceName, state })
     response = await evolution.getQrCode(instanceName)
   } catch (existErr: unknown) {
@@ -477,6 +485,14 @@ export async function debugInstance(workspaceId: string, numberId: string) {
   } catch (err) {
     const e = err as { response?: { status?: number; data?: unknown }; message?: string }
     out.fetchInstances = { error: true, httpStatus: e?.response?.status, message: e?.message, data: e?.response?.data }
+  }
+
+  // 3b. webhook config — endpoint dedicado da Evolution v2
+  try {
+    out.webhookConfig = await evolution.getWebhook(instanceName)
+  } catch (err) {
+    const e = err as { response?: { status?: number; data?: unknown }; message?: string }
+    out.webhookConfig = { error: true, httpStatus: e?.response?.status, message: e?.message, data: e?.response?.data }
   }
 
   // 4. Test webhook — chama o próprio webhook a partir do container API pra validar conectividade interna
