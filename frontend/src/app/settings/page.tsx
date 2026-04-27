@@ -175,8 +175,13 @@ function WhatsAppSettings() {
       toast.success('Instância resetada — gerando QR Code')
       qc.invalidateQueries({ queryKey: ['whatsapp-numbers'] })
       qc.invalidateQueries({ queryKey: ['whatsapp-qr', id] })
-    } catch {
-      toast.error('Erro ao resetar instância')
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message
+        ?? (err as Error)?.message
+        ?? 'Erro desconhecido'
+      console.error('Reset error', err)
+      toast.error(`Erro ao resetar: ${msg}`, { duration: 8000 })
     } finally {
       setConnectingId(null)
     }

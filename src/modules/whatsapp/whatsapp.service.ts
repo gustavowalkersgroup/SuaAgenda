@@ -304,7 +304,7 @@ export async function connectNumber(workspaceId: string, numberId: string) {
   return response
 }
 
-// Reseta a instância no Evolution: deleta e cria de novo (gera QR fresco)
+// Reseta a instância no Evolution: logout → delete → wait → create (gera QR fresco)
 export async function resetInstance(workspaceId: string, numberId: string) {
   const result = await query<{ instance_name: string }>(
     'SELECT instance_name FROM whatsapp_numbers WHERE id = $1 AND workspace_id = $2',
@@ -316,22 +316,57 @@ export async function resetInstance(workspaceId: string, numberId: string) {
   const baseUrl = env.INTERNAL_APP_URL ?? `${env.APP_URL}/api`
   const webhookUrl = `${baseUrl}/webhooks/whatsapp/webhook/${instanceName}`
 
-  // Limpa QR e estado de conexão
+  logger.info('Resetting WhatsApp instance', { instanceName })
+
+  // Limpa QR e estado de conexão no banco
   await query(
     `UPDATE whatsapp_numbers SET qr_code = NULL, is_connected = false WHERE instance_name = $1`,
     [instanceName]
   )
 
-  // Tenta deletar (ignora se já não existe)
+  // 1. Logout — desconecta do WhatsApp se estiver conectada
+  try {
+    await evolution.logoutInstance(instanceName)
+    logger.info('Instance logged out', { instanceName })
+  } catch (err) {
+    const status = (err as { response?: { status?: number } })?.response?.status
+    logger.warn('Logout failed (continuando)', { instanceName, status, error: (err as Error).message })
+  }
+
+  // 2. Delete — remove a instância
   try {
     await evolution.deleteInstance(instanceName)
     logger.info('Instance deleted', { instanceName })
   } catch (err) {
-    logger.warn('Delete instance failed (may not exist)', { instanceName, error: (err as Error).message })
+    const status = (err as { response?: { status?: number } })?.response?.status
+    logger.warn('Delete failed (continuando)', { instanceName, status, error: (err as Error).message })
   }
 
-  // Cria nova
-  const response = await evolution.createInstance(instanceName, webhookUrl)
+  // 3. Aguarda Evolution liberar o nome (pode ficar reservado por alguns segundos)
+  await new Promise(r => setTimeout(r, 2000))
+
+  // 4. Create — cria nova instância (gera QR)
+  let response: unknown
+  try {
+    response = await evolution.createInstance(instanceName, webhookUrl)
+  } catch (err) {
+    const errObj = err as { response?: { status?: number; data?: unknown } }
+    logger.error('Create instance failed during reset', {
+      instanceName,
+      status: errObj?.response?.status,
+      data: errObj?.response?.data,
+    })
+    throw new Error(
+      `Não foi possível recriar a instância (status ${errObj?.response?.status ?? 'desconhecido'}). ` +
+      `Verifique se a Evolution API está acessível.`
+    )
+  }
+
+  logger.info('Instance recreated', {
+    instanceName,
+    keys: response && typeof response === 'object' ? Object.keys(response as object) : null,
+  })
+
   const qrRaw = extractQrFromResponse(response)
 
   if (qrRaw) {
@@ -340,6 +375,9 @@ export async function resetInstance(workspaceId: string, numberId: string) {
       `UPDATE whatsapp_numbers SET qr_code = $1 WHERE instance_name = $2`,
       [qrBase64, instanceName]
     )
+    logger.info('QR saved after reset', { instanceName, length: qrBase64.length })
+  } else {
+    logger.warn('Reset OK but no QR yet — aguardando webhook qrcode.updated', { instanceName })
   }
 
   return response
