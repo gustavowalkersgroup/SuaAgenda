@@ -206,6 +206,28 @@ export async function sendMessage(
   })
 }
 
+// Extrai QR code base64 de qualquer formato de resposta da Evolution API
+function extractQrFromResponse(r: unknown): string | undefined {
+  if (!r || typeof r !== 'object') return undefined
+  const obj = r as Record<string, unknown>
+
+  // Tenta na ordem: data.qrcode (string), data.qrcode.base64, data.base64,
+  //                 data.qr (string), data.code (string)
+  const nested = obj.qrcode
+  if (typeof nested === 'string' && nested.length > 50) return nested
+  if (nested && typeof nested === 'object') {
+    const b64 = (nested as Record<string, unknown>).base64
+    if (typeof b64 === 'string' && b64.length > 50) return b64
+  }
+
+  if (typeof obj.base64 === 'string' && (obj.base64 as string).length > 50) return obj.base64 as string
+  if (typeof obj.qr === 'string' && (obj.qr as string).length > 50) return obj.qr as string
+
+  // Evolution v2.2+: a resposta de /instance/connect tem { code, count, pairingCode, base64? }
+  // Em alguns casos `code` é o link "WAJ:..." e `base64` é a imagem PNG
+  return undefined
+}
+
 // Gerenciamento de instâncias
 export async function connectNumber(workspaceId: string, numberId: string) {
   const result = await query<{ instance_name: string }>(
@@ -218,9 +240,13 @@ export async function connectNumber(workspaceId: string, numberId: string) {
   const baseUrl = env.INTERNAL_APP_URL ?? `${env.APP_URL}/api`
   const webhookUrl = `${baseUrl}/webhooks/whatsapp/webhook/${instanceName}`
 
-  let response: unknown
+  // Limpa QR antigo do banco antes de gerar novo
+  await query(`UPDATE whatsapp_numbers SET qr_code = NULL WHERE instance_name = $1`, [instanceName])
 
-  // Se a instância já existe no Evolution, apenas solicita reconexão — não tenta recriar
+  let response: unknown
+  let needsRecreate = false
+
+  // Se a instância já existe no Evolution, apenas solicita reconexão
   try {
     const status = await evolution.getInstanceStatus(instanceName)
     const state = (status as Record<string, Record<string, string>>)?.instance?.state
@@ -231,26 +257,38 @@ export async function connectNumber(workspaceId: string, numberId: string) {
       return status
     }
 
-    // Instância existe mas não está conectada → solicita QR
     logger.info('WhatsApp instance exists, requesting QR', { instanceName, state })
     response = await evolution.getQrCode(instanceName)
   } catch (existErr: unknown) {
     const httpStatus = (existErr as { response?: { status?: number } })?.response?.status
-    if (httpStatus !== 404 && httpStatus !== 400) {
-      throw existErr  // Erro inesperado
-    }
-    // Instância não existe no Evolution → cria
-    logger.info('WhatsApp instance not found, creating', { instanceName })
-    response = await evolution.createInstance(instanceName, webhookUrl)
+    if (httpStatus !== 404 && httpStatus !== 400) throw existErr
+    needsRecreate = true
   }
 
-  // Evolution às vezes retorna o QR diretamente na resposta — salva imediatamente no banco
-  const r = response as Record<string, unknown> | undefined
-  const nested2 = r?.qrcode
-  let qrRaw: string | undefined
-  if (typeof nested2 === 'string') qrRaw = nested2
-  else if (nested2 && typeof nested2 === 'object') qrRaw = (nested2 as Record<string, unknown>)?.base64 as string | undefined
-  qrRaw = qrRaw ?? (r?.base64 as string | undefined)
+  // Loga estrutura da resposta para debug
+  logger.info('Evolution connect response shape', {
+    instanceName,
+    keys: response && typeof response === 'object' ? Object.keys(response as object) : null,
+    hasBase64: !!(response as Record<string, unknown>)?.base64,
+    qrcodeType: typeof (response as Record<string, unknown>)?.qrcode,
+  })
+
+  let qrRaw = extractQrFromResponse(response)
+
+  // Se a instância não existia OU se existia mas não retornou QR → recria do zero
+  if (needsRecreate || !qrRaw) {
+    logger.info('Recreating WhatsApp instance to get fresh QR', { instanceName, needsRecreate, hadQr: !!qrRaw })
+    try {
+      await evolution.deleteInstance(instanceName).catch(() => {/* já não existe */})
+    } catch { /* ignore */ }
+
+    response = await evolution.createInstance(instanceName, webhookUrl)
+    logger.info('Evolution createInstance response shape', {
+      instanceName,
+      keys: response && typeof response === 'object' ? Object.keys(response as object) : null,
+    })
+    qrRaw = extractQrFromResponse(response)
+  }
 
   if (qrRaw) {
     const qrBase64 = qrRaw.startsWith('data:') ? qrRaw : `data:image/png;base64,${qrRaw}`
@@ -258,7 +296,50 @@ export async function connectNumber(workspaceId: string, numberId: string) {
       `UPDATE whatsapp_numbers SET qr_code = $1 WHERE instance_name = $2`,
       [qrBase64, instanceName]
     )
-    logger.info('QR code saved from connect response', { instanceName })
+    logger.info('QR code saved from connect response', { instanceName, length: qrBase64.length })
+  } else {
+    logger.warn('No QR in response — aguardando webhook qrcode.updated', { instanceName })
+  }
+
+  return response
+}
+
+// Reseta a instância no Evolution: deleta e cria de novo (gera QR fresco)
+export async function resetInstance(workspaceId: string, numberId: string) {
+  const result = await query<{ instance_name: string }>(
+    'SELECT instance_name FROM whatsapp_numbers WHERE id = $1 AND workspace_id = $2',
+    [numberId, workspaceId]
+  )
+  if (!result.rowCount) throw new NotFoundError('Número')
+
+  const instanceName = result.rows[0].instance_name
+  const baseUrl = env.INTERNAL_APP_URL ?? `${env.APP_URL}/api`
+  const webhookUrl = `${baseUrl}/webhooks/whatsapp/webhook/${instanceName}`
+
+  // Limpa QR e estado de conexão
+  await query(
+    `UPDATE whatsapp_numbers SET qr_code = NULL, is_connected = false WHERE instance_name = $1`,
+    [instanceName]
+  )
+
+  // Tenta deletar (ignora se já não existe)
+  try {
+    await evolution.deleteInstance(instanceName)
+    logger.info('Instance deleted', { instanceName })
+  } catch (err) {
+    logger.warn('Delete instance failed (may not exist)', { instanceName, error: (err as Error).message })
+  }
+
+  // Cria nova
+  const response = await evolution.createInstance(instanceName, webhookUrl)
+  const qrRaw = extractQrFromResponse(response)
+
+  if (qrRaw) {
+    const qrBase64 = qrRaw.startsWith('data:') ? qrRaw : `data:image/png;base64,${qrRaw}`
+    await query(
+      `UPDATE whatsapp_numbers SET qr_code = $1 WHERE instance_name = $2`,
+      [qrBase64, instanceName]
+    )
   }
 
   return response

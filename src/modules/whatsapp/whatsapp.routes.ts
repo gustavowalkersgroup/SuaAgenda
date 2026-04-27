@@ -53,6 +53,13 @@ router.post('/numbers/:id/connect', auth, a(async (req: AuthRequest, res: Respon
   } catch (err) { next(err) }
 }))
 
+router.post('/numbers/:id/reset', auth, a(async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const result = await service.resetInstance(req.auth.workspaceId, req.params.id)
+    res.json(result)
+  } catch (err) { next(err) }
+}))
+
 router.get('/numbers/:id/qrcode', auth, a(async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const result = await service.getQrCode(req.auth.workspaceId, req.params.id)

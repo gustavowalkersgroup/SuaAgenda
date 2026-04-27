@@ -166,6 +166,22 @@ function WhatsAppSettings() {
     }
   }
 
+  async function handleReset(id: string) {
+    if (!confirm('Resetar a instância? Isso vai apagar a sessão atual e gerar um novo QR Code.')) return
+    setConnectingId(id)
+    try {
+      await api.post(`/whatsapp/numbers/${id}/reset`)
+      setQrPolling(id)
+      toast.success('Instância resetada — gerando QR Code')
+      qc.invalidateQueries({ queryKey: ['whatsapp-numbers'] })
+      qc.invalidateQueries({ queryKey: ['whatsapp-qr', id] })
+    } catch {
+      toast.error('Erro ao resetar instância')
+    } finally {
+      setConnectingId(null)
+    }
+  }
+
   type WaNumber = { id: string; instance_name: string; phone_number: string; display_name: string; purpose: string; is_connected: boolean }
   const numbers: WaNumber[] = Array.isArray(data) ? data : []
 
@@ -196,14 +212,24 @@ function WhatsAppSettings() {
                         )}
                       </Badge>
                       {!n.is_connected && (
-                        <Button
-                          size="sm" variant="secondary"
-                          onClick={() => handleConnect(n.id)}
-                          loading={connectingId === n.id}
-                          disabled={!!qrPolling}
-                        >
-                          <RefreshCw size={13} /> {qrPolling === n.id ? 'Conectando...' : 'Conectar'}
-                        </Button>
+                        <>
+                          <Button
+                            size="sm" variant="secondary"
+                            onClick={() => handleConnect(n.id)}
+                            loading={connectingId === n.id}
+                            disabled={!!qrPolling}
+                          >
+                            <RefreshCw size={13} /> {qrPolling === n.id ? 'Conectando...' : 'Conectar'}
+                          </Button>
+                          <button
+                            onClick={() => handleReset(n.id)}
+                            disabled={connectingId === n.id}
+                            className="text-xs text-red-500 hover:text-red-700 underline px-1 disabled:opacity-50"
+                            title="Apaga a sessão e gera novo QR"
+                          >
+                            Resetar
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -233,7 +259,16 @@ function WhatsAppSettings() {
                   {qrPolling === n.id && !qrCode && (
                     <div className="mt-3 p-4 rounded-xl border border-dashed border-amber-200 bg-amber-50 text-center">
                       <RefreshCw size={20} className="animate-spin text-amber-500 mx-auto mb-2" />
-                      <p className="text-sm text-amber-700">Gerando QR Code... aguarde alguns segundos</p>
+                      <p className="text-sm text-amber-700 mb-2">Gerando QR Code... aguarde alguns segundos</p>
+                      <p className="text-xs text-amber-600 mb-3">
+                        Se demorar mais de 30s, clique em "Resetar instância"
+                      </p>
+                      <button
+                        onClick={() => handleReset(n.id)}
+                        className="text-xs text-amber-700 underline hover:text-amber-900 font-medium"
+                      >
+                        🔄 Resetar instância e gerar novo QR
+                      </button>
                     </div>
                   )}
                 </div>
