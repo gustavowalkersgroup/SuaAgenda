@@ -67,6 +67,14 @@ router.get('/numbers/:id/qrcode', auth, a(async (req: AuthRequest, res: Response
   } catch (err) { next(err) }
 }))
 
+// Endpoint de debug: chama Evolution diretamente e retorna a resposta crua (truncada)
+router.get('/numbers/:id/debug', auth, a(async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const result = await service.debugInstance(req.auth.workspaceId, req.params.id)
+    res.json(result)
+  } catch (err) { next(err) }
+}))
+
 router.post('/send', auth, a(async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { conversationId, text } = z.object({

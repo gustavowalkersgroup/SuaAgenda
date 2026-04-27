@@ -346,9 +346,9 @@ export async function resetInstance(workspaceId: string, numberId: string) {
   await new Promise(r => setTimeout(r, 2000))
 
   // 4. Create — cria nova instância (gera QR)
-  let response: unknown
+  let createResponse: unknown
   try {
-    response = await evolution.createInstance(instanceName, webhookUrl)
+    createResponse = await evolution.createInstance(instanceName, webhookUrl)
   } catch (err) {
     const errObj = err as { response?: { status?: number; data?: unknown } }
     logger.error('Create instance failed during reset', {
@@ -362,12 +362,40 @@ export async function resetInstance(workspaceId: string, numberId: string) {
     )
   }
 
-  logger.info('Instance recreated', {
+  logger.info('createInstance response', {
     instanceName,
-    keys: response && typeof response === 'object' ? Object.keys(response as object) : null,
+    keys: createResponse && typeof createResponse === 'object' ? Object.keys(createResponse as object) : null,
+    qrcodeKeys: createResponse && typeof (createResponse as Record<string, unknown>).qrcode === 'object'
+      ? Object.keys((createResponse as Record<string, Record<string, unknown>>).qrcode)
+      : null,
   })
 
-  const qrRaw = extractQrFromResponse(response)
+  let qrRaw = extractQrFromResponse(createResponse)
+
+  // 5. Se o create não trouxe QR, chama /connect explicitamente (Evolution v2 às vezes só retorna lá)
+  if (!qrRaw) {
+    await new Promise(r => setTimeout(r, 1500))
+    try {
+      const connectResponse = await evolution.getQrCode(instanceName)
+      logger.info('connect response (post-create)', {
+        instanceName,
+        keys: connectResponse && typeof connectResponse === 'object' ? Object.keys(connectResponse as object) : null,
+      })
+      qrRaw = extractQrFromResponse(connectResponse)
+    } catch (err) {
+      logger.warn('connect call after create failed', { instanceName, error: (err as Error).message })
+    }
+  }
+
+  // Salva snapshot de debug pra inspecionar via frontend quando QR ficar null
+  const debugSnapshot = {
+    timestamp: new Date().toISOString(),
+    createKeys: createResponse && typeof createResponse === 'object' ? Object.keys(createResponse as object) : null,
+    createQrcodeShape: createResponse && typeof (createResponse as Record<string, unknown>).qrcode === 'object'
+      ? Object.keys((createResponse as Record<string, Record<string, unknown>>).qrcode)
+      : typeof (createResponse as Record<string, unknown>)?.qrcode,
+    extracted: !!qrRaw,
+  }
 
   if (qrRaw) {
     const qrBase64 = qrRaw.startsWith('data:') ? qrRaw : `data:image/png;base64,${qrRaw}`
@@ -377,10 +405,10 @@ export async function resetInstance(workspaceId: string, numberId: string) {
     )
     logger.info('QR saved after reset', { instanceName, length: qrBase64.length })
   } else {
-    logger.warn('Reset OK but no QR yet — aguardando webhook qrcode.updated', { instanceName })
+    logger.warn('Reset OK but no QR — aguardando webhook qrcode.updated', { instanceName, debugSnapshot })
   }
 
-  return response
+  return { ...((createResponse ?? {}) as object), _debug: debugSnapshot }
 }
 
 export async function getQrCode(workspaceId: string, numberId: string) {
@@ -390,6 +418,51 @@ export async function getQrCode(workspaceId: string, numberId: string) {
   )
   if (!result.rowCount) throw new NotFoundError('Número')
   return result.rows[0]
+}
+
+// Debug: chama Evolution e retorna estrutura da resposta + status, sem salvar nada
+export async function debugInstance(workspaceId: string, numberId: string) {
+  const result = await query<{ instance_name: string }>(
+    'SELECT instance_name FROM whatsapp_numbers WHERE id = $1 AND workspace_id = $2',
+    [numberId, workspaceId]
+  )
+  if (!result.rowCount) throw new NotFoundError('Número')
+
+  const instanceName = result.rows[0].instance_name
+  const summary = (label: string, data: unknown) => {
+    if (!data || typeof data !== 'object') return { label, type: typeof data, raw: String(data).slice(0, 200) }
+    const obj = data as Record<string, unknown>
+    const keys = Object.keys(obj)
+    const preview: Record<string, unknown> = {}
+    for (const k of keys) {
+      const v = obj[k]
+      if (typeof v === 'string') preview[k] = v.length > 80 ? `[string ${v.length} chars]` : v
+      else if (typeof v === 'object' && v !== null) {
+        preview[k] = { type: 'object', keys: Object.keys(v as object).slice(0, 10) }
+      } else preview[k] = v
+    }
+    return { label, keys, preview }
+  }
+
+  const out: Record<string, unknown> = { instanceName, evolutionUrl: env.EVOLUTION_API_URL }
+
+  try {
+    const status = await evolution.getInstanceStatus(instanceName)
+    out.status = summary('connectionState', status)
+  } catch (err) {
+    const e = err as { response?: { status?: number; data?: unknown } }
+    out.status = { error: true, httpStatus: e?.response?.status, data: e?.response?.data }
+  }
+
+  try {
+    const connect = await evolution.getQrCode(instanceName)
+    out.connect = summary('connect', connect)
+  } catch (err) {
+    const e = err as { response?: { status?: number; data?: unknown } }
+    out.connect = { error: true, httpStatus: e?.response?.status, data: e?.response?.data }
+  }
+
+  return out
 }
 
 export async function addNumber(workspaceId: string, params: {
