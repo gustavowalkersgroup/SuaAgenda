@@ -17,10 +17,18 @@ router.post('/webhook/:instance', async (req: Request, res: Response, next: Next
       instance: req.params.instance,
       data: req.body.data,
     }
-    logger.debug('Webhook received', { event: payload.event, instance: payload.instance })
+    logger.info('Webhook received', {
+      event: payload.event,
+      instance: payload.instance,
+      bodyKeys: req.body ? Object.keys(req.body) : null,
+    })
     await service.handleWebhook(payload)
     res.json({ ok: true })
   } catch (err) {
+    logger.error('Webhook handler error', {
+      instance: req.params.instance,
+      error: (err as Error).message,
+    })
     next(err)
   }
 })

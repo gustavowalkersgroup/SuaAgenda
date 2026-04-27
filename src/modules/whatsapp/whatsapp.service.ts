@@ -420,7 +420,7 @@ export async function getQrCode(workspaceId: string, numberId: string) {
   return result.rows[0]
 }
 
-// Debug: chama Evolution e retorna estrutura da resposta + status, sem salvar nada
+// Debug: chama Evolution e retorna estrutura completa de status + connect + fetch + webhook
 export async function debugInstance(workspaceId: string, numberId: string) {
   const result = await query<{ instance_name: string }>(
     'SELECT instance_name FROM whatsapp_numbers WHERE id = $1 AND workspace_id = $2',
@@ -429,37 +429,67 @@ export async function debugInstance(workspaceId: string, numberId: string) {
   if (!result.rowCount) throw new NotFoundError('Número')
 
   const instanceName = result.rows[0].instance_name
-  const summary = (label: string, data: unknown) => {
-    if (!data || typeof data !== 'object') return { label, type: typeof data, raw: String(data).slice(0, 200) }
-    const obj = data as Record<string, unknown>
-    const keys = Object.keys(obj)
-    const preview: Record<string, unknown> = {}
-    for (const k of keys) {
-      const v = obj[k]
-      if (typeof v === 'string') preview[k] = v.length > 80 ? `[string ${v.length} chars]` : v
-      else if (typeof v === 'object' && v !== null) {
-        preview[k] = { type: 'object', keys: Object.keys(v as object).slice(0, 10) }
-      } else preview[k] = v
-    }
-    return { label, keys, preview }
+  const baseUrl = env.INTERNAL_APP_URL ?? `${env.APP_URL}/api`
+  const expectedWebhookUrl = `${baseUrl}/webhooks/whatsapp/webhook/${instanceName}`
+
+  const out: Record<string, unknown> = {
+    instanceName,
+    evolutionUrl: env.EVOLUTION_API_URL,
+    expectedWebhookUrl,
+    internalAppUrl: env.INTERNAL_APP_URL ?? null,
+    appUrl: env.APP_URL ?? null,
   }
 
-  const out: Record<string, unknown> = { instanceName, evolutionUrl: env.EVOLUTION_API_URL }
-
+  // 1. Status — desta vez retornando o VALOR completo, não só keys
   try {
     const status = await evolution.getInstanceStatus(instanceName)
-    out.status = summary('connectionState', status)
+    out.status = status   // resposta completa
   } catch (err) {
     const e = err as { response?: { status?: number; data?: unknown } }
     out.status = { error: true, httpStatus: e?.response?.status, data: e?.response?.data }
   }
 
+  // 2. Connect — resposta completa (mas trunca strings longas pra não vazar o QR)
   try {
     const connect = await evolution.getQrCode(instanceName)
-    out.connect = summary('connect', connect)
+    if (connect && typeof connect === 'object') {
+      const truncated: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(connect)) {
+        if (typeof v === 'string' && v.length > 200) truncated[k] = `[string ${v.length} chars]`
+        else truncated[k] = v
+      }
+      out.connect = truncated
+    } else out.connect = connect
   } catch (err) {
     const e = err as { response?: { status?: number; data?: unknown } }
     out.connect = { error: true, httpStatus: e?.response?.status, data: e?.response?.data }
+  }
+
+  // 3. fetchInstances — mostra a config gravada do webhook na Evolution
+  try {
+    const fetchUrl = `/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`
+    const axios = (await import('axios')).default
+    const response = await axios.get(env.EVOLUTION_API_URL + fetchUrl, {
+      headers: { apikey: env.EVOLUTION_API_KEY },
+      timeout: 8000,
+    })
+    out.fetchInstances = response.data
+  } catch (err) {
+    const e = err as { response?: { status?: number; data?: unknown }; message?: string }
+    out.fetchInstances = { error: true, httpStatus: e?.response?.status, message: e?.message, data: e?.response?.data }
+  }
+
+  // 4. Test webhook — chama o próprio webhook a partir do container API pra validar conectividade interna
+  try {
+    const axios = (await import('axios')).default
+    await axios.post(expectedWebhookUrl, {
+      event: 'TEST_FROM_DEBUG',
+      data: { ping: true },
+    }, { timeout: 5000 })
+    out.webhookSelfTest = { ok: true }
+  } catch (err) {
+    const e = err as { response?: { status?: number }; message?: string; code?: string }
+    out.webhookSelfTest = { ok: false, message: e?.message, code: e?.code, httpStatus: e?.response?.status }
   }
 
   return out
