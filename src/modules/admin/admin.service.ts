@@ -22,12 +22,20 @@ export async function listAllWorkspaces() {
     plan: string
     is_active: boolean
     created_at: string
+    trial_ends_at: string | null
+    max_contacts: number
+    max_users: number
+    billing_email: string | null
+    notes: string | null
+    timezone: string
     member_count: number
     owner_name: string | null
     owner_email: string | null
   }>(
     `SELECT
        w.id, w.name, w.slug, w.plan, w.is_active, w.created_at,
+       w.trial_ends_at, w.max_contacts, w.max_users,
+       w.billing_email, w.notes, w.timezone,
        COUNT(wu.user_id)::int AS member_count,
        u.name  AS owner_name,
        u.email AS owner_email

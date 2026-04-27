@@ -135,15 +135,26 @@ async function handleConnectionUpdate(instanceName: string, data: Record<string,
 }
 
 async function handleQrUpdate(instanceName: string, data: Record<string, unknown>): Promise<void> {
-  // Suporta v1: data.qrcode.base64 e v2: data.base64 ou data.qrcode.base64
+  // Suporta vários formatos da Evolution API:
+  // v1: data.qrcode.base64  |  v2: data.base64  |  v2 alt: data.qrcode = string direta
   const d = data as Record<string, unknown>
-  const nested = d?.qrcode as Record<string, unknown> | undefined
-  const qrCode = (nested?.base64 ?? d?.base64) as string | undefined
+  const nested = d?.qrcode
 
-  if (!qrCode) {
+  let raw: string | undefined
+  if (typeof nested === 'string') {
+    raw = nested                                           // qrcode é a própria string base64
+  } else if (nested && typeof nested === 'object') {
+    raw = (nested as Record<string, unknown>)?.base64 as string | undefined
+  }
+  raw = raw ?? (d?.base64 as string | undefined)
+
+  if (!raw) {
     logger.debug('QR code update received but no base64 found', { instanceName, keys: Object.keys(d) })
     return
   }
+
+  // Normaliza: garante prefixo data URL para exibição direta no browser
+  const qrCode = raw.startsWith('data:') ? raw : `data:image/png;base64,${raw}`
 
   await query(
     `UPDATE whatsapp_numbers SET qr_code = $1 WHERE instance_name = $2`,
@@ -235,9 +246,14 @@ export async function connectNumber(workspaceId: string, numberId: string) {
 
   // Evolution às vezes retorna o QR diretamente na resposta — salva imediatamente no banco
   const r = response as Record<string, unknown> | undefined
-  const qrBase64 = r?.base64 as string | undefined
-    ?? (r?.qrcode as Record<string, unknown>)?.base64 as string | undefined
-  if (qrBase64) {
+  const nested2 = r?.qrcode
+  let qrRaw: string | undefined
+  if (typeof nested2 === 'string') qrRaw = nested2
+  else if (nested2 && typeof nested2 === 'object') qrRaw = (nested2 as Record<string, unknown>)?.base64 as string | undefined
+  qrRaw = qrRaw ?? (r?.base64 as string | undefined)
+
+  if (qrRaw) {
+    const qrBase64 = qrRaw.startsWith('data:') ? qrRaw : `data:image/png;base64,${qrRaw}`
     await query(
       `UPDATE whatsapp_numbers SET qr_code = $1 WHERE instance_name = $2`,
       [qrBase64, instanceName]
